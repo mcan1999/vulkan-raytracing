@@ -905,7 +905,7 @@ int main() {
   tinyobj::ObjReaderConfig reader_config;
   tinyobj::ObjReader reader;
 
-  if (!reader.ParseFromFile("resources/cube_scene.obj", reader_config)) {
+  if (!reader.ParseFromFile("resources/teapot.obj", reader_config)) {
     if (!reader.Error().empty()) {
       std::cerr << "TinyObjReader: " << reader.Error();
     }

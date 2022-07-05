@@ -22,6 +22,21 @@ static float cameraPosition[3];
 static float cameraYaw;
 static float cameraPitch;
 
+
+void parseFile( tinyobj::ObjReaderConfig& reader_config, tinyobj::ObjReader& reader, const char * fileName){
+  
+  if (!reader.ParseFromFile(fileName, reader_config)) {
+    if (!reader.Error().empty()) {
+      std::cerr << "TinyObjReader: " << reader.Error();
+    }
+    exit(1);
+  }
+
+  if (!reader.Warning().empty()) {
+    std::cout << "TinyObjReader: " << reader.Warning();
+  }
+}
+
 void keyCallback(GLFWwindow *windowPtr, int key, int scancode, int action,
                  int mods) {
 
@@ -70,6 +85,218 @@ void throwExceptionVulkanAPI(VkResult result, std::string functionName) {
 void throwExceptionMessage(std::string message) {
   throw std::runtime_error(message);
 }
+
+void createVertexBuffer(VkBuffer& vertexBufferHandle, 
+  const tinyobj::attrib_t &attrib,
+  uint32_t& queueFamilyIndex, 
+  VkDevice deviceHandle,
+  VkPhysicalDeviceMemoryProperties physicalDeviceMemoryProperties,
+  VkMemoryAllocateFlagsInfo& memoryAllocateFlagsInfo,
+  PFN_vkGetBufferDeviceAddressKHR pvkGetBufferDeviceAddressKHR,
+  VkDeviceMemory& vertexDeviceMemoryHandle,
+  VkDeviceAddress& vertexBufferDeviceAddress)
+{
+
+   VkBufferCreateInfo vertexBufferCreateInfo = {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+      .pNext = NULL,
+      .flags = 0,
+      .size = sizeof(float) * attrib.vertices.size() * 3,
+      .usage =
+          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+          VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+      .queueFamilyIndexCount = 1,
+      .pQueueFamilyIndices = &queueFamilyIndex};
+
+  vertexBufferHandle = VK_NULL_HANDLE;
+  VkResult result = vkCreateBuffer(deviceHandle, &vertexBufferCreateInfo, NULL,
+                          &vertexBufferHandle);
+
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkCreateBuffer");
+  }
+
+  VkMemoryRequirements vertexMemoryRequirements;
+  vkGetBufferMemoryRequirements(deviceHandle, vertexBufferHandle,
+                                &vertexMemoryRequirements);
+
+  uint32_t vertexMemoryTypeIndex = -1;
+  for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
+       x++) {
+    if ((vertexMemoryRequirements.memoryTypeBits & (1 << x)) &&
+        (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
+         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) ==
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+
+      vertexMemoryTypeIndex = x;
+      break;
+    }
+  }
+
+  VkMemoryAllocateInfo vertexMemoryAllocateInfo = {
+      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+      .pNext = &memoryAllocateFlagsInfo,
+      .allocationSize = vertexMemoryRequirements.size,
+      .memoryTypeIndex = vertexMemoryTypeIndex};
+
+  vertexDeviceMemoryHandle = VK_NULL_HANDLE;
+  result = vkAllocateMemory(deviceHandle, &vertexMemoryAllocateInfo, NULL,
+                            &vertexDeviceMemoryHandle);
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkAllocateMemory");
+  }
+
+  result = vkBindBufferMemory(deviceHandle, vertexBufferHandle,
+                              vertexDeviceMemoryHandle, 0);
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkBindBufferMemory");
+  }
+
+  void *hostVertexMemoryBuffer;
+  result = vkMapMemory(deviceHandle, vertexDeviceMemoryHandle, 0,
+                       sizeof(float) * attrib.vertices.size() * 3, 0,
+                       &hostVertexMemoryBuffer);
+
+  memcpy(hostVertexMemoryBuffer, attrib.vertices.data(),
+         sizeof(float) * attrib.vertices.size() * 3);
+
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkMapMemory");
+  }
+
+  vkUnmapMemory(deviceHandle, vertexDeviceMemoryHandle);
+
+  VkBufferDeviceAddressInfo vertexBufferDeviceAddressInfo = {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+      .pNext = NULL,
+      .buffer = vertexBufferHandle};
+
+  vertexBufferDeviceAddress = pvkGetBufferDeviceAddressKHR(
+      deviceHandle, &vertexBufferDeviceAddressInfo);
+}
+
+void createIndexBuffer(VkBuffer& indexBufferHandle, 
+  std::vector<uint32_t>& indexList,
+  uint32_t& queueFamilyIndex,
+  VkDevice deviceHandle,
+  VkPhysicalDeviceMemoryProperties physicalDeviceMemoryProperties,
+  VkMemoryAllocateFlagsInfo& memoryAllocateFlagsInfo,
+  PFN_vkGetBufferDeviceAddressKHR pvkGetBufferDeviceAddressKHR,
+  VkDeviceMemory& indexDeviceMemoryHandle,
+  VkDeviceAddress& indexBufferDeviceAddress)
+{
+
+  VkBufferCreateInfo indexBufferCreateInfo = {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+      .pNext = NULL,
+      .flags = 0,
+      .size = sizeof(uint32_t) * indexList.size(),
+      .usage =
+          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+          VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+      .queueFamilyIndexCount = 1,
+      .pQueueFamilyIndices = &queueFamilyIndex};
+
+  indexBufferHandle = VK_NULL_HANDLE;
+  VkResult result = vkCreateBuffer(deviceHandle, &indexBufferCreateInfo, NULL,
+                          &indexBufferHandle);
+
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkCreateBuffer");
+  }
+
+  VkMemoryRequirements indexMemoryRequirements;
+  vkGetBufferMemoryRequirements(deviceHandle, indexBufferHandle,
+                                &indexMemoryRequirements);
+
+  uint32_t indexMemoryTypeIndex = -1;
+  for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
+       x++) {
+    if ((indexMemoryRequirements.memoryTypeBits & (1 << x)) &&
+        (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
+         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) ==
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+
+      indexMemoryTypeIndex = x;
+      break;
+    }
+  }
+
+  VkMemoryAllocateInfo indexMemoryAllocateInfo = {
+      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+      .pNext = &memoryAllocateFlagsInfo,
+      .allocationSize = indexMemoryRequirements.size,
+      .memoryTypeIndex = indexMemoryTypeIndex};
+
+  indexDeviceMemoryHandle = VK_NULL_HANDLE;
+  result = vkAllocateMemory(deviceHandle, &indexMemoryAllocateInfo, NULL,
+                            &indexDeviceMemoryHandle);
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkAllocateMemory");
+  }
+
+  result = vkBindBufferMemory(deviceHandle, indexBufferHandle,
+                              indexDeviceMemoryHandle, 0);
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkBindBufferMemory");
+  }
+
+  void *hostIndexMemoryBuffer;
+  result = vkMapMemory(deviceHandle, indexDeviceMemoryHandle, 0,
+                       sizeof(uint32_t) * indexList.size(), 0,
+                       &hostIndexMemoryBuffer);
+
+  memcpy(hostIndexMemoryBuffer, indexList.data(),
+         sizeof(uint32_t) * indexList.size());
+
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkMapMemory");
+  }
+
+  vkUnmapMemory(deviceHandle, indexDeviceMemoryHandle);
+
+  VkBufferDeviceAddressInfo indexBufferDeviceAddressInfo = {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+      .pNext = NULL,
+      .buffer = indexBufferHandle};
+
+  indexBufferDeviceAddress =
+      pvkGetBufferDeviceAddressKHR(deviceHandle, &indexBufferDeviceAddressInfo);
+}
+
+void createBLASGeometry(VkAccelerationStructureGeometryKHR& bottomLevelAccelerationStructureGeometry,
+  VkDeviceAddress vertexBufferDeviceAddress,
+  VkDeviceAddress indexBufferDeviceAddress,
+  const tinyobj::attrib_t& attrib)
+{
+
+  VkAccelerationStructureGeometryDataKHR
+      bottomLevelAccelerationStructureGeometryData = {
+          .triangles = {
+              .sType =
+                  VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
+              .pNext = NULL,
+              .vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
+              .vertexData = {.deviceAddress = vertexBufferDeviceAddress},
+              .vertexStride = sizeof(float) * 3,
+              .maxVertex = (uint32_t)attrib.vertices.size(),
+              .indexType = VK_INDEX_TYPE_UINT32,
+              .indexData = {.deviceAddress = indexBufferDeviceAddress},
+              .transformData = {.deviceAddress = 0}}};
+
+  bottomLevelAccelerationStructureGeometry =
+      {.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
+       .pNext = NULL,
+       .geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
+       .geometry = bottomLevelAccelerationStructureGeometryData,
+       .flags = VK_GEOMETRY_OPAQUE_BIT_KHR};
+}
+
+
 
 int main() {
   VkResult result;
@@ -899,219 +1126,104 @@ int main() {
   tinyobj::ObjReaderConfig reader_config;
   tinyobj::ObjReader reader;
 
-  if (!reader.ParseFromFile("resources/teapot.obj", reader_config)) {
-    if (!reader.Error().empty()) {
-      std::cerr << "TinyObjReader: " << reader.Error();
+  std::vector<tinyobj::attrib_t> attrib;
+  std::vector<std::vector<tinyobj::shape_t>> shapes;
+  std::vector<std::vector<tinyobj::material_t>> materials;
+  
+
+  std::vector<const char*> fileNames = {
+    "resources/cube_scene.obj"
+  };
+
+  uint32_t objectCount = fileNames.size();
+
+  for(const char* fileName: fileNames){
+    parseFile(reader_config, reader, fileName);
+
+    attrib.push_back(reader.GetAttrib());
+
+    const std::vector<tinyobj::shape_t>& readShapes = reader.GetShapes();
+    shapes.push_back(readShapes);
+     
+    const std::vector<tinyobj::material_t>& readMaterials = reader.GetMaterials();
+    materials.push_back(readMaterials);
+  }
+
+  assert(attrib.size() == objectCount);
+  assert(shapes.size() == objectCount);
+  assert(materials.size() == objectCount);
+
+  std::vector<uint32_t> primitiveCount(objectCount, 0);
+
+  std::vector<std::vector<uint32_t>> indexList;
+  for(int i = 0; i < objectCount; i++){
+    std::vector<uint32_t> currIndexList;
+
+    for (tinyobj::shape_t shape : shapes[i]) {
+      primitiveCount[i] += shape.mesh.num_face_vertices.size();
+      
+      for (tinyobj::index_t index : shape.mesh.indices) {
+        currIndexList.push_back(index.vertex_index);
+      }
     }
-    exit(1);
+    
+    indexList.push_back(currIndexList);
   }
-
-  if (!reader.Warning().empty()) {
-    std::cout << "TinyObjReader: " << reader.Warning();
-  }
-
-  const tinyobj::attrib_t &attrib = reader.GetAttrib();
-  const std::vector<tinyobj::shape_t> &shapes = reader.GetShapes();
-  const std::vector<tinyobj::material_t> &materials = reader.GetMaterials();
-
-  uint32_t primitiveCount = 0;
-  std::vector<uint32_t> indexList;
-  for (tinyobj::shape_t shape : shapes) {
-
-    primitiveCount += shape.mesh.num_face_vertices.size();
-
-    for (tinyobj::index_t index : shape.mesh.indices) {
-      indexList.push_back(index.vertex_index);
-    }
-  }
+ 
 
   // =========================================================================
   // Vertex Buffer
 
-  VkBufferCreateInfo vertexBufferCreateInfo = {
-      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-      .pNext = NULL,
-      .flags = 0,
-      .size = sizeof(float) * attrib.vertices.size() * 3,
-      .usage =
-          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-          VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
-          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-      .queueFamilyIndexCount = 1,
-      .pQueueFamilyIndices = &queueFamilyIndex};
-
-  VkBuffer vertexBufferHandle = VK_NULL_HANDLE;
-  result = vkCreateBuffer(deviceHandle, &vertexBufferCreateInfo, NULL,
-                          &vertexBufferHandle);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkCreateBuffer");
+  std::vector<VkBuffer> vertexBufferHandle(objectCount, VK_NULL_HANDLE);
+  std::vector<VkDeviceMemory> vertexDeviceMemoryHandle(objectCount, VK_NULL_HANDLE);
+  std::vector<VkDeviceAddress> vertexBufferDeviceAddress(objectCount);
+  
+  for(int i = 0; i < objectCount; i++){
+      createVertexBuffer(vertexBufferHandle[i], 
+        attrib[i], 
+        queueFamilyIndex, 
+        deviceHandle, 
+        physicalDeviceMemoryProperties,
+        memoryAllocateFlagsInfo,
+        pvkGetBufferDeviceAddressKHR,
+        vertexDeviceMemoryHandle[i],
+        vertexBufferDeviceAddress[i]);
   }
 
-  VkMemoryRequirements vertexMemoryRequirements;
-  vkGetBufferMemoryRequirements(deviceHandle, vertexBufferHandle,
-                                &vertexMemoryRequirements);
-
-  uint32_t vertexMemoryTypeIndex = -1;
-  for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
-       x++) {
-    if ((vertexMemoryRequirements.memoryTypeBits & (1 << x)) &&
-        (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
-         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) ==
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-
-      vertexMemoryTypeIndex = x;
-      break;
-    }
-  }
-
-  VkMemoryAllocateInfo vertexMemoryAllocateInfo = {
-      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-      .pNext = &memoryAllocateFlagsInfo,
-      .allocationSize = vertexMemoryRequirements.size,
-      .memoryTypeIndex = vertexMemoryTypeIndex};
-
-  VkDeviceMemory vertexDeviceMemoryHandle = VK_NULL_HANDLE;
-  result = vkAllocateMemory(deviceHandle, &vertexMemoryAllocateInfo, NULL,
-                            &vertexDeviceMemoryHandle);
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkAllocateMemory");
-  }
-
-  result = vkBindBufferMemory(deviceHandle, vertexBufferHandle,
-                              vertexDeviceMemoryHandle, 0);
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkBindBufferMemory");
-  }
-
-  void *hostVertexMemoryBuffer;
-  result = vkMapMemory(deviceHandle, vertexDeviceMemoryHandle, 0,
-                       sizeof(float) * attrib.vertices.size() * 3, 0,
-                       &hostVertexMemoryBuffer);
-
-  memcpy(hostVertexMemoryBuffer, attrib.vertices.data(),
-         sizeof(float) * attrib.vertices.size() * 3);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkMapMemory");
-  }
-
-  vkUnmapMemory(deviceHandle, vertexDeviceMemoryHandle);
-
-  VkBufferDeviceAddressInfo vertexBufferDeviceAddressInfo = {
-      .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-      .pNext = NULL,
-      .buffer = vertexBufferHandle};
-
-  VkDeviceAddress vertexBufferDeviceAddress = pvkGetBufferDeviceAddressKHR(
-      deviceHandle, &vertexBufferDeviceAddressInfo);
 
   // =========================================================================
   // Index Buffer
 
-  VkBufferCreateInfo indexBufferCreateInfo = {
-      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-      .pNext = NULL,
-      .flags = 0,
-      .size = sizeof(uint32_t) * indexList.size(),
-      .usage =
-          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-          VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
-          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-      .queueFamilyIndexCount = 1,
-      .pQueueFamilyIndices = &queueFamilyIndex};
+  std::vector<VkBuffer> indexBufferHandle(objectCount, VK_NULL_HANDLE);
+  std::vector<VkDeviceMemory> indexDeviceMemoryHandle(objectCount, VK_NULL_HANDLE);
+  std::vector<VkDeviceAddress> indexBufferDeviceAddress(objectCount);
 
-  VkBuffer indexBufferHandle = VK_NULL_HANDLE;
-  result = vkCreateBuffer(deviceHandle, &indexBufferCreateInfo, NULL,
-                          &indexBufferHandle);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkCreateBuffer");
+  for(int i = 0; i < objectCount; i++){
+    createIndexBuffer(indexBufferHandle[i], 
+      indexList[i], 
+      queueFamilyIndex, 
+      deviceHandle, 
+      physicalDeviceMemoryProperties,
+      memoryAllocateFlagsInfo,
+      pvkGetBufferDeviceAddressKHR,
+      indexDeviceMemoryHandle[i],
+      indexBufferDeviceAddress[i]
+    );
   }
 
-  VkMemoryRequirements indexMemoryRequirements;
-  vkGetBufferMemoryRequirements(deviceHandle, indexBufferHandle,
-                                &indexMemoryRequirements);
-
-  uint32_t indexMemoryTypeIndex = -1;
-  for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
-       x++) {
-    if ((indexMemoryRequirements.memoryTypeBits & (1 << x)) &&
-        (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
-         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) ==
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-
-      indexMemoryTypeIndex = x;
-      break;
-    }
-  }
-
-  VkMemoryAllocateInfo indexMemoryAllocateInfo = {
-      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-      .pNext = &memoryAllocateFlagsInfo,
-      .allocationSize = indexMemoryRequirements.size,
-      .memoryTypeIndex = indexMemoryTypeIndex};
-
-  VkDeviceMemory indexDeviceMemoryHandle = VK_NULL_HANDLE;
-  result = vkAllocateMemory(deviceHandle, &indexMemoryAllocateInfo, NULL,
-                            &indexDeviceMemoryHandle);
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkAllocateMemory");
-  }
-
-  result = vkBindBufferMemory(deviceHandle, indexBufferHandle,
-                              indexDeviceMemoryHandle, 0);
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkBindBufferMemory");
-  }
-
-  void *hostIndexMemoryBuffer;
-  result = vkMapMemory(deviceHandle, indexDeviceMemoryHandle, 0,
-                       sizeof(uint32_t) * indexList.size(), 0,
-                       &hostIndexMemoryBuffer);
-
-  memcpy(hostIndexMemoryBuffer, indexList.data(),
-         sizeof(uint32_t) * indexList.size());
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkMapMemory");
-  }
-
-  vkUnmapMemory(deviceHandle, indexDeviceMemoryHandle);
-
-  VkBufferDeviceAddressInfo indexBufferDeviceAddressInfo = {
-      .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-      .pNext = NULL,
-      .buffer = indexBufferHandle};
-
-  VkDeviceAddress indexBufferDeviceAddress =
-      pvkGetBufferDeviceAddressKHR(deviceHandle, &indexBufferDeviceAddressInfo);
 
   // =========================================================================
   // Bottom Level Acceleration Structure
+  
+  std::vector<VkAccelerationStructureGeometryKHR> bottomLevelAccelerationStructureGeometry(objectCount);
 
-  VkAccelerationStructureGeometryDataKHR
-      bottomLevelAccelerationStructureGeometryData = {
-          .triangles = {
-              .sType =
-                  VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
-              .pNext = NULL,
-              .vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
-              .vertexData = {.deviceAddress = vertexBufferDeviceAddress},
-              .vertexStride = sizeof(float) * 3,
-              .maxVertex = (uint32_t)attrib.vertices.size(),
-              .indexType = VK_INDEX_TYPE_UINT32,
-              .indexData = {.deviceAddress = indexBufferDeviceAddress},
-              .transformData = {.deviceAddress = 0}}};
+  for(int i = 0; i < objectCount; i++){
+    createBLASGeometry(bottomLevelAccelerationStructureGeometry[i],
+      vertexBufferDeviceAddress[i],
+      indexBufferDeviceAddress[i],
+      attrib[i]);
+  }
 
-  VkAccelerationStructureGeometryKHR bottomLevelAccelerationStructureGeometry =
-      {.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
-       .pNext = NULL,
-       .geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
-       .geometry = bottomLevelAccelerationStructureGeometryData,
-       .flags = VK_GEOMETRY_OPAQUE_BIT_KHR};
 
   VkAccelerationStructureBuildGeometryInfoKHR
       bottomLevelAccelerationStructureBuildGeometryInfo = {
@@ -1123,8 +1235,8 @@ int main() {
           .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
           .srcAccelerationStructure = VK_NULL_HANDLE,
           .dstAccelerationStructure = VK_NULL_HANDLE,
-          .geometryCount = 1,
-          .pGeometries = &bottomLevelAccelerationStructureGeometry,
+          .geometryCount = bottomLevelAccelerationStructureGeometry.size(),
+          .pGeometries = bottomLevelAccelerationStructureGeometry.data(),
           .ppGeometries = NULL,
           .scratchData = {.deviceAddress = 0}};
 
@@ -1137,7 +1249,7 @@ int main() {
           .updateScratchSize = 0,
           .buildScratchSize = 0};
 
-  std::vector<uint32_t> bottomLevelMaxPrimitiveCountList = {primitiveCount};
+  std::vector<uint32_t> bottomLevelMaxPrimitiveCountList = primitiveCount;
 
   pvkGetAccelerationStructureBuildSizesKHR(
       deviceHandle, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
@@ -1337,7 +1449,7 @@ int main() {
 
   VkAccelerationStructureBuildRangeInfoKHR
       bottomLevelAccelerationStructureBuildRangeInfo = {.primitiveCount =
-                                                            primitiveCount,
+                                                            primitiveCount[0], //TODO loop
                                                         .primitiveOffset = 0,
                                                         .firstVertex = 0,
                                                         .transformOffset = 0};
@@ -2091,10 +2203,10 @@ int main() {
       .buffer = uniformBufferHandle, .offset = 0, .range = VK_WHOLE_SIZE};
 
   VkDescriptorBufferInfo indexDescriptorInfo = {
-      .buffer = indexBufferHandle, .offset = 0, .range = VK_WHOLE_SIZE};
+      .buffer = indexBufferHandle[0], .offset = 0, .range = VK_WHOLE_SIZE}; //TODO loop
 
   VkDescriptorBufferInfo vertexDescriptorInfo = {
-      .buffer = vertexBufferHandle, .offset = 0, .range = VK_WHOLE_SIZE};
+      .buffer = vertexBufferHandle[0], .offset = 0, .range = VK_WHOLE_SIZE}; //TODO loop
 
   VkDescriptorImageInfo rayTraceImageDescriptorInfo = {
       .sampler = VK_NULL_HANDLE,
@@ -2159,8 +2271,8 @@ int main() {
   // =========================================================================
   // Material Index Buffer
 
-  std::vector<uint32_t> materialIndexList;
-  for (tinyobj::shape_t shape : shapes) {
+  std::vector<uint32_t> materialIndexList; //TODO loop
+  for (tinyobj::shape_t shape : shapes[0]) {
     for (int index : shape.mesh.material_ids) {
       materialIndexList.push_back(index);
     }
@@ -2244,12 +2356,12 @@ int main() {
     float emission[4] = {0, 0, 0, 0};
   };
 
-  std::vector<Material> materialList(materials.size());
-  for (uint32_t x = 0; x < materials.size(); x++) {
-    memcpy(materialList[x].ambient, materials[x].ambient, sizeof(float) * 3);
-    memcpy(materialList[x].diffuse, materials[x].diffuse, sizeof(float) * 3);
-    memcpy(materialList[x].specular, materials[x].specular, sizeof(float) * 3);
-    memcpy(materialList[x].emission, materials[x].emission, sizeof(float) * 3);
+  std::vector<Material> materialList(materials[0].size());
+  for (uint32_t x = 0; x < materials[0].size(); x++) { //TODO loop
+    memcpy(materialList[x].ambient, materials[0][x].ambient, sizeof(float) * 3);
+    memcpy(materialList[x].diffuse, materials[0][x].diffuse, sizeof(float) * 3);
+    memcpy(materialList[x].specular, materials[0][x].specular, sizeof(float) * 3);
+    memcpy(materialList[x].emission, materials[0][x].emission, sizeof(float) * 3);
   }
 
   VkBufferCreateInfo materialBufferCreateInfo = {
@@ -2907,11 +3019,15 @@ int main() {
 
   vkDestroyBuffer(deviceHandle, bottomLevelAccelerationStructureBufferHandle,
                   NULL);
+  
+   for(int i = 0; i < objectCount; i++){
+    vkFreeMemory(deviceHandle, indexDeviceMemoryHandle[i], NULL);
+    vkDestroyBuffer(deviceHandle, indexBufferHandle[i], NULL);
+    vkFreeMemory(deviceHandle, vertexDeviceMemoryHandle[i], NULL);
+    vkDestroyBuffer(deviceHandle, vertexBufferHandle[i], NULL);
+   }
 
-  vkFreeMemory(deviceHandle, indexDeviceMemoryHandle, NULL);
-  vkDestroyBuffer(deviceHandle, indexBufferHandle, NULL);
-  vkFreeMemory(deviceHandle, vertexDeviceMemoryHandle, NULL);
-  vkDestroyBuffer(deviceHandle, vertexBufferHandle, NULL);
+
   vkDestroyPipeline(deviceHandle, rayTracingPipelineHandle, NULL);
   vkDestroyShaderModule(deviceHandle, rayMissShadowShaderModuleHandle, NULL);
   vkDestroyShaderModule(deviceHandle, rayMissShaderModuleHandle, NULL);

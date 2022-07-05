@@ -88,20 +88,20 @@ int main() {
   // Vulkan Instance
 
   std::vector<VkValidationFeatureEnableEXT> validationFeatureEnableList = {
-      // VK_VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT,
+      VK_VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT,
       VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT,
       VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT};
 
   VkDebugUtilsMessageSeverityFlagBitsEXT debugUtilsMessageSeverityFlagBits =
       (VkDebugUtilsMessageSeverityFlagBitsEXT)(
-          // VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+          VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
           VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
           VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
           VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT);
 
   VkDebugUtilsMessageTypeFlagBitsEXT debugUtilsMessageTypeFlagBits =
       (VkDebugUtilsMessageTypeFlagBitsEXT)(
-          // VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+          VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
           VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
           VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT);
 
@@ -142,7 +142,6 @@ int main() {
       glfwExtensions, glfwExtensions + glfwExtensionCount);
 
   instanceExtensionList.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-  instanceExtensionList.push_back("VK_KHR_get_physical_device_properties2");
   instanceExtensionList.push_back("VK_KHR_surface");
 
   VkInstanceCreateInfo instanceCreateInfo = {
@@ -195,10 +194,6 @@ int main() {
 
   VkPhysicalDevice activePhysicalDeviceHandle = physicalDeviceHandleList[0];
 
-  VkPhysicalDeviceProperties physicalDeviceProperties;
-  vkGetPhysicalDeviceProperties(activePhysicalDeviceHandle,
-                                &physicalDeviceProperties);
-
   VkPhysicalDeviceRayTracingPipelinePropertiesKHR
       physicalDeviceRayTracingPipelineProperties = {
           .sType =
@@ -207,8 +202,7 @@ int main() {
 
   VkPhysicalDeviceProperties2 physicalDeviceProperties2 = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
-      .pNext = &physicalDeviceRayTracingPipelineProperties,
-      .properties = physicalDeviceProperties};
+      .pNext = &physicalDeviceRayTracingPipelineProperties};
 
   vkGetPhysicalDeviceProperties2(activePhysicalDeviceHandle,
                                  &physicalDeviceProperties2);
@@ -217,7 +211,7 @@ int main() {
   vkGetPhysicalDeviceMemoryProperties(activePhysicalDeviceHandle,
                                       &physicalDeviceMemoryProperties);
 
-  std::cout << physicalDeviceProperties.deviceName << std::endl;
+  std::cout << "DEVICE: " << physicalDeviceProperties2.properties.deviceName << std::endl;
 
   // =========================================================================
   // Physical Device Features
@@ -314,8 +308,8 @@ int main() {
       .flags = 0,
       .queueCreateInfoCount = 1,
       .pQueueCreateInfos = &deviceQueueCreateInfo,
-      .enabledLayerCount = 0,
-      .ppEnabledLayerNames = NULL,
+      .enabledLayerCount = (uint32_t)instanceLayerList.size(),
+      .ppEnabledLayerNames = instanceLayerList.data(),
       .enabledExtensionCount = (uint32_t)deviceExtensionList.size(),
       .ppEnabledExtensionNames = deviceExtensionList.data(),
       .pEnabledFeatures = &deviceFeatures};

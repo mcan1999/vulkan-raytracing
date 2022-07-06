@@ -86,6 +86,29 @@ void throwExceptionMessage(std::string message) {
   throw std::runtime_error(message);
 }
 
+uint32_t getMemoryIndex(VkPhysicalDeviceMemoryProperties& physicalDeviceMemoryProperties,
+  VkMemoryRequirements& memoryRequirements,
+  VkMemoryPropertyFlagBits memoryFlagBits)
+{
+  uint32_t memoryIndex = -1;
+  for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
+       x++) {
+
+    if ((memoryRequirements.memoryTypeBits &
+         (1 << x)) &&
+        (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
+         memoryFlagBits) ==
+            memoryFlagBits) {
+
+      memoryIndex = x;
+      break;
+    }
+  }
+
+  return memoryIndex;
+}
+
+
 void createVertexBuffer(VkBuffer& vertexBufferHandle, 
   const tinyobj::attrib_t &attrib,
   uint32_t& queueFamilyIndex, 
@@ -122,19 +145,10 @@ void createVertexBuffer(VkBuffer& vertexBufferHandle,
   vkGetBufferMemoryRequirements(deviceHandle, vertexBufferHandle,
                                 &vertexMemoryRequirements);
 
-  uint32_t vertexMemoryTypeIndex = -1;
-  for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
-       x++) {
-    if ((vertexMemoryRequirements.memoryTypeBits & (1 << x)) &&
-        (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
-         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) ==
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-
-      vertexMemoryTypeIndex = x;
-      break;
-    }
-  }
-
+  uint32_t vertexMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
+    vertexMemoryRequirements,
+    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+  
   VkMemoryAllocateInfo vertexMemoryAllocateInfo = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
       .pNext = &memoryAllocateFlagsInfo,
@@ -213,19 +227,10 @@ void createIndexBuffer(VkBuffer& indexBufferHandle,
   vkGetBufferMemoryRequirements(deviceHandle, indexBufferHandle,
                                 &indexMemoryRequirements);
 
-  uint32_t indexMemoryTypeIndex = -1;
-  for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
-       x++) {
-    if ((indexMemoryRequirements.memoryTypeBits & (1 << x)) &&
-        (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
-         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) ==
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-
-      indexMemoryTypeIndex = x;
-      break;
-    }
-  }
-
+  uint32_t indexMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
+    indexMemoryRequirements,
+    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+  
   VkMemoryAllocateInfo indexMemoryAllocateInfo = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
       .pNext = &memoryAllocateFlagsInfo,
@@ -368,21 +373,10 @@ void createBLAS(VkAccelerationStructureKHR& bottomLevelAccelerationStructureHand
       deviceHandle, bottomLevelAccelerationStructureBufferHandle,
       &bottomLevelAccelerationStructureMemoryRequirements);
 
-  uint32_t bottomLevelAccelerationStructureMemoryTypeIndex = -1;
-  for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
-       x++) {
-
-    if ((bottomLevelAccelerationStructureMemoryRequirements.memoryTypeBits &
-         (1 << x)) &&
-        (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
-         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) ==
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
-
-      bottomLevelAccelerationStructureMemoryTypeIndex = x;
-      break;
-    }
-  }
-
+  uint32_t bottomLevelAccelerationStructureMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
+    bottomLevelAccelerationStructureMemoryRequirements,
+    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+ 
   VkMemoryAllocateInfo bottomLevelAccelerationStructureMemoryAllocateInfo = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
       .pNext = NULL,
@@ -481,22 +475,10 @@ void createBLASScratchBuffer(VkBuffer& bottomLevelAccelerationStructureScratchBu
     deviceHandle, bottomLevelAccelerationStructureScratchBufferHandle,
     &bottomLevelAccelerationStructureScratchMemoryRequirements);
 
-  uint32_t bottomLevelAccelerationStructureScratchMemoryTypeIndex = -1;
-  for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
-       x++) {
-
-    if ((bottomLevelAccelerationStructureScratchMemoryRequirements
-             .memoryTypeBits &
-         (1 << x)) &&
-        (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
-         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) ==
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
-
-      bottomLevelAccelerationStructureScratchMemoryTypeIndex = x;
-      break;
-    }
-  }
-
+  uint32_t bottomLevelAccelerationStructureScratchMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
+    bottomLevelAccelerationStructureScratchMemoryRequirements,
+    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+  
   VkMemoryAllocateInfo
     bottomLevelAccelerationStructureScratchMemoryAllocateInfo = {
         .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -607,6 +589,22 @@ void buildBLAS(VkCommandBuffer& commandBufferHandle,
     throwExceptionVulkanAPI(result, "vkWaitForFences");
   }
 
+}
+
+void createTLAS(VkDeviceAddress& bottomLevelAccelerationStructureDeviceAddress,
+  VkTransformMatrixKHR& transformMatrix,
+  uint32_t objIndex){
+
+  VkAccelerationStructureInstanceKHR bottomLevelAccelerationStructureInstance =
+  {.transform = transformMatrix,
+    .instanceCustomIndex = objIndex,
+    .mask = 0xFF,
+    .instanceShaderBindingTableRecordOffset = 0, //TODO shader binding
+    .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
+    .accelerationStructureReference =
+        bottomLevelAccelerationStructureDeviceAddress};
+
+  
 }
 
 
@@ -1612,9 +1610,21 @@ int main() {
       queueHandle);
   }
 
-
   // =========================================================================
   // Top Level Acceleration Structure
+
+   //TODO add matrix vector for each instance
+  VkTransformMatrixKHR transformMatrixmatrix ={
+    .matrix = 
+     {{1.0, 0.0, 0.0, 0.0},
+      {0.0, 1.0, 0.0, 0.0},
+      {0.0, 0.0, 1.0, 0.0}}
+  };
+
+  for(int i = 0; i < objectCount; i++){
+   // createTLAS();
+  }
+    
 
   VkAccelerationStructureInstanceKHR bottomLevelAccelerationStructureInstance =
       {.transform = {.matrix = {{1.0, 0.0, 0.0, 0.0},
@@ -1653,20 +1663,9 @@ int main() {
                                 bottomLevelGeometryInstanceBufferHandle,
                                 &bottomLevelGeometryInstanceMemoryRequirements);
 
-  uint32_t bottomLevelGeometryInstanceMemoryTypeIndex = -1;
-  for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
-       x++) {
-
-    if ((bottomLevelGeometryInstanceMemoryRequirements.memoryTypeBits &
-         (1 << x)) &&
-        (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
-         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) ==
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-
-      bottomLevelGeometryInstanceMemoryTypeIndex = x;
-      break;
-    }
-  }
+  uint32_t bottomLevelGeometryInstanceMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
+    bottomLevelGeometryInstanceMemoryRequirements,
+    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 
   VkMemoryAllocateInfo bottomLevelGeometryInstanceMemoryAllocateInfo = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -1790,21 +1789,10 @@ int main() {
       deviceHandle, topLevelAccelerationStructureBufferHandle,
       &topLevelAccelerationStructureMemoryRequirements);
 
-  uint32_t topLevelAccelerationStructureMemoryTypeIndex = -1;
-  for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
-       x++) {
-
-    if ((topLevelAccelerationStructureMemoryRequirements.memoryTypeBits &
-         (1 << x)) &&
-        (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
-         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) ==
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
-
-      topLevelAccelerationStructureMemoryTypeIndex = x;
-      break;
-    }
-  }
-
+  uint32_t topLevelAccelerationStructureMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
+    topLevelAccelerationStructureMemoryRequirements,
+    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+  
   VkMemoryAllocateInfo topLevelAccelerationStructureMemoryAllocateInfo = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
       .pNext = NULL,
@@ -1891,21 +1879,10 @@ int main() {
       deviceHandle, topLevelAccelerationStructureScratchBufferHandle,
       &topLevelAccelerationStructureScratchMemoryRequirements);
 
-  uint32_t topLevelAccelerationStructureScratchMemoryTypeIndex = -1;
-  for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
-       x++) {
-
-    if ((topLevelAccelerationStructureScratchMemoryRequirements.memoryTypeBits &
-         (1 << x)) &&
-        (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
-         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) ==
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
-
-      topLevelAccelerationStructureScratchMemoryTypeIndex = x;
-      break;
-    }
-  }
-
+  uint32_t topLevelAccelerationStructureScratchMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
+    topLevelAccelerationStructureScratchMemoryRequirements,
+    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+ 
   VkMemoryAllocateInfo topLevelAccelerationStructureScratchMemoryAllocateInfo =
       {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
        .pNext = &memoryAllocateFlagsInfo,
@@ -2056,18 +2033,9 @@ int main() {
   vkGetBufferMemoryRequirements(deviceHandle, uniformBufferHandle,
                                 &uniformMemoryRequirements);
 
-  uint32_t uniformMemoryTypeIndex = -1;
-  for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
-       x++) {
-    if ((uniformMemoryRequirements.memoryTypeBits & (1 << x)) &&
-        (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
-         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) ==
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-
-      uniformMemoryTypeIndex = x;
-      break;
-    }
-  }
+  uint32_t uniformMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
+    uniformMemoryRequirements,
+    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 
   VkMemoryAllocateInfo uniformMemoryAllocateInfo = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -2134,19 +2102,10 @@ int main() {
   vkGetImageMemoryRequirements(deviceHandle, rayTraceImageHandle,
                                &rayTraceImageMemoryRequirements);
 
-  uint32_t rayTraceImageMemoryTypeIndex = -1;
-  for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
-       x++) {
-    if ((rayTraceImageMemoryRequirements.memoryTypeBits & (1 << x)) &&
-        (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
-         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) ==
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
-
-      rayTraceImageMemoryTypeIndex = x;
-      break;
-    }
-  }
-
+  uint32_t rayTraceImageMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
+    rayTraceImageMemoryRequirements,
+    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+  
   VkMemoryAllocateInfo rayTraceImageMemoryAllocateInfo = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
       .pNext = NULL,
@@ -2392,19 +2351,10 @@ int main() {
   vkGetBufferMemoryRequirements(deviceHandle, materialIndexBufferHandle,
                                 &materialIndexMemoryRequirements);
 
-  uint32_t materialIndexMemoryTypeIndex = -1;
-  for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
-       x++) {
-    if ((materialIndexMemoryRequirements.memoryTypeBits & (1 << x)) &&
-        (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
-         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) ==
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-
-      materialIndexMemoryTypeIndex = x;
-      break;
-    }
-  }
-
+  uint32_t materialIndexMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
+    materialIndexMemoryRequirements,
+    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+  
   VkMemoryAllocateInfo materialIndexMemoryAllocateInfo = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
       .pNext = &memoryAllocateFlagsInfo,
@@ -2478,19 +2428,10 @@ int main() {
   vkGetBufferMemoryRequirements(deviceHandle, materialBufferHandle,
                                 &materialMemoryRequirements);
 
-  uint32_t materialMemoryTypeIndex = -1;
-  for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
-       x++) {
-    if ((materialMemoryRequirements.memoryTypeBits & (1 << x)) &&
-        (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
-         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) ==
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-
-      materialMemoryTypeIndex = x;
-      break;
-    }
-  }
-
+  uint32_t materialMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
+    materialMemoryRequirements,
+    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+ 
   VkMemoryAllocateInfo materialMemoryAllocateInfo = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
       .pNext = &memoryAllocateFlagsInfo,
@@ -2587,19 +2528,10 @@ int main() {
   vkGetBufferMemoryRequirements(deviceHandle, shaderBindingTableBufferHandle,
                                 &shaderBindingTableMemoryRequirements);
 
-  uint32_t shaderBindingTableMemoryTypeIndex = -1;
-  for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
-       x++) {
-    if ((shaderBindingTableMemoryRequirements.memoryTypeBits & (1 << x)) &&
-        (physicalDeviceMemoryProperties.memoryTypes[x].propertyFlags &
-         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) ==
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-
-      shaderBindingTableMemoryTypeIndex = x;
-      break;
-    }
-  }
-
+  uint32_t shaderBindingTableMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
+    shaderBindingTableMemoryRequirements,
+    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+  
   VkMemoryAllocateInfo shaderBindingTableMemoryAllocateInfo = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
       .pNext = &memoryAllocateFlagsInfo,

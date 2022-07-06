@@ -145,6 +145,23 @@ void allocAndBind(VkDeviceMemory& deviceMemoryHandle,
   }
 }
 
+void copyData(VkDevice& deviceHandle,
+  VkDeviceMemory &deviceMemoryHandle,
+  void* data,
+  VkDeviceSize dataSize){
+  void *hostVertexMemoryBuffer;
+  VkResult result = vkMapMemory(deviceHandle, deviceMemoryHandle, 0,
+                       dataSize, 0,
+                       &hostVertexMemoryBuffer);
+
+  memcpy(hostVertexMemoryBuffer, data, dataSize);
+
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkMapMemory");
+  }
+
+  vkUnmapMemory(deviceHandle, deviceMemoryHandle);
+}
 //*****************************************************
 
 void createVertexBuffer(VkBuffer& vertexBufferHandle, 
@@ -186,19 +203,10 @@ void createVertexBuffer(VkBuffer& vertexBufferHandle,
     deviceHandle,
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 
-  void *hostVertexMemoryBuffer;
-  result = vkMapMemory(deviceHandle, vertexDeviceMemoryHandle, 0,
-                       sizeof(float) * attrib.vertices.size() * 3, 0,
-                       &hostVertexMemoryBuffer);
-
-  memcpy(hostVertexMemoryBuffer, attrib.vertices.data(),
-         sizeof(float) * attrib.vertices.size() * 3);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkMapMemory");
-  }
-
-  vkUnmapMemory(deviceHandle, vertexDeviceMemoryHandle);
+  copyData(deviceHandle,
+    vertexDeviceMemoryHandle,
+    (void *) attrib.vertices.data(),
+    sizeof(float) * attrib.vertices.size() * 3);
 
   VkBufferDeviceAddressInfo vertexBufferDeviceAddressInfo = {
       .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
@@ -247,20 +255,11 @@ void createIndexBuffer(VkBuffer& indexBufferHandle,
     indexBufferHandle,
     deviceHandle,
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-
-  void *hostIndexMemoryBuffer;
-  result = vkMapMemory(deviceHandle, indexDeviceMemoryHandle, 0,
-                       sizeof(uint32_t) * indexList.size(), 0,
-                       &hostIndexMemoryBuffer);
-
-  memcpy(hostIndexMemoryBuffer, indexList.data(),
-         sizeof(uint32_t) * indexList.size());
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkMapMemory");
-  }
-
-  vkUnmapMemory(deviceHandle, indexDeviceMemoryHandle);
+  
+  copyData(deviceHandle,
+    indexDeviceMemoryHandle,
+    (void *) indexList.data(),
+    sizeof(uint32_t) * indexList.size());
 
   VkBufferDeviceAddressInfo indexBufferDeviceAddressInfo = {
       .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
@@ -1608,22 +1607,11 @@ int main() {
     bottomLevelGeometryInstanceBufferHandle,
     deviceHandle,
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-
-  void *hostbottomLevelGeometryInstanceMemoryBuffer;
-  result =
-      vkMapMemory(deviceHandle, bottomLevelGeometryInstanceDeviceMemoryHandle,
-                  0, sizeof(VkAccelerationStructureInstanceKHR), 0,
-                  &hostbottomLevelGeometryInstanceMemoryBuffer);
-
-  memcpy(hostbottomLevelGeometryInstanceMemoryBuffer,
-         &bottomLevelAccelerationStructureInstance,
-         sizeof(VkAccelerationStructureInstanceKHR));
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkMapMemory");
-  }
-
-  vkUnmapMemory(deviceHandle, bottomLevelGeometryInstanceDeviceMemoryHandle);
+  
+  copyData(deviceHandle,
+    bottomLevelGeometryInstanceDeviceMemoryHandle,
+    (void *) &bottomLevelAccelerationStructureInstance,
+    sizeof(VkAccelerationStructureInstanceKHR));
 
   VkBufferDeviceAddressInfo bottomLevelGeometryInstanceDeviceAddressInfo = {
       .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
@@ -1905,18 +1893,11 @@ int main() {
     uniformBufferHandle,
     deviceHandle,
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-
-  void *hostUniformMemoryBuffer;
-  result = vkMapMemory(deviceHandle, uniformDeviceMemoryHandle, 0,
-                       sizeof(UniformStructure), 0, &hostUniformMemoryBuffer);
-
-  memcpy(hostUniformMemoryBuffer, &uniformStructure, sizeof(UniformStructure));
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkMapMemory");
-  }
-
-  vkUnmapMemory(deviceHandle, uniformDeviceMemoryHandle);
+  
+  copyData(deviceHandle,
+    uniformDeviceMemoryHandle,
+    (void *) &uniformStructure,
+    sizeof(UniformStructure));
 
   // =========================================================================
   // Ray Trace Image
@@ -2204,20 +2185,11 @@ int main() {
     materialIndexBufferHandle,
     deviceHandle,
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-
-  void *hostMaterialIndexMemoryBuffer;
-  result = vkMapMemory(deviceHandle, materialIndexDeviceMemoryHandle, 0,
-                       sizeof(uint32_t) * materialIndexList.size(), 0,
-                       &hostMaterialIndexMemoryBuffer);
-
-  memcpy(hostMaterialIndexMemoryBuffer, materialIndexList.data(),
-         sizeof(uint32_t) * materialIndexList.size());
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkMapMemory");
-  }
-
-  vkUnmapMemory(deviceHandle, materialIndexDeviceMemoryHandle);
+  
+  copyData(deviceHandle,
+    materialIndexDeviceMemoryHandle,
+    (void *) materialIndexList.data(),
+    sizeof(uint32_t) * materialIndexList.size());
 
   // =========================================================================
   // Material Buffer
@@ -2262,20 +2234,11 @@ int main() {
     materialBufferHandle,
     deviceHandle,
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-
-  void *hostMaterialMemoryBuffer;
-  result = vkMapMemory(deviceHandle, materialDeviceMemoryHandle, 0,
-                       sizeof(Material) * materialList.size(), 0,
-                       &hostMaterialMemoryBuffer);
-
-  memcpy(hostMaterialMemoryBuffer, materialList.data(),
-         sizeof(Material) * materialList.size());
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkMapMemory");
-  }
-
-  vkUnmapMemory(deviceHandle, materialDeviceMemoryHandle);
+  
+  copyData(deviceHandle,
+    materialDeviceMemoryHandle,
+    (void *)  materialList.data(),
+    sizeof(Material) * materialList.size());
 
   // =========================================================================
   // Update Material Descriptor Set
@@ -2688,17 +2651,10 @@ int main() {
       uniformStructure.frameCount += 1;
     }
 
-    result = vkMapMemory(deviceHandle, uniformDeviceMemoryHandle, 0,
-                         sizeof(UniformStructure), 0, &hostUniformMemoryBuffer);
-
-    memcpy(hostUniformMemoryBuffer, &uniformStructure,
-           sizeof(UniformStructure));
-
-    if (result != VK_SUCCESS) {
-      throwExceptionVulkanAPI(result, "vkMapMemory");
-    }
-
-    vkUnmapMemory(deviceHandle, uniformDeviceMemoryHandle);
+    copyData(deviceHandle,
+      uniformDeviceMemoryHandle,
+      (void *) &uniformStructure,
+      sizeof(UniformStructure));
 
     result = vkWaitForFences(deviceHandle, 1,
                              &imageAvailableFenceHandleList[currentFrame], true,

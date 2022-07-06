@@ -86,6 +86,7 @@ void throwExceptionMessage(std::string message) {
   throw std::runtime_error(message);
 }
 
+//************** Helpers ****************************
 uint32_t getMemoryIndex(VkPhysicalDeviceMemoryProperties& physicalDeviceMemoryProperties,
   VkMemoryRequirements& memoryRequirements,
   VkMemoryPropertyFlagBits memoryFlagBits)
@@ -108,12 +109,49 @@ uint32_t getMemoryIndex(VkPhysicalDeviceMemoryProperties& physicalDeviceMemoryPr
   return memoryIndex;
 }
 
+void allocAndBind(VkDeviceMemory& deviceMemoryHandle,
+  VkMemoryAllocateFlagsInfo* memoryAllocateFlagsInfoPtr,
+  VkPhysicalDeviceMemoryProperties& physicalDeviceMemoryProperties,
+  VkBuffer& bufferHandle,
+  VkDevice& deviceHandle,
+  VkMemoryPropertyFlagBits memoryFlagBits)
+{
+  VkMemoryRequirements memoryRequirements;
+  vkGetBufferMemoryRequirements(deviceHandle, bufferHandle,
+                                &memoryRequirements);
+
+  uint32_t memoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
+    memoryRequirements,
+    memoryFlagBits);
+  
+  VkMemoryAllocateInfo memoryAllocateInfo = {
+      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+      .pNext = memoryAllocateFlagsInfoPtr,
+      .allocationSize = memoryRequirements.size,
+      .memoryTypeIndex = memoryTypeIndex};
+
+
+  deviceMemoryHandle = VK_NULL_HANDLE;
+  VkResult result = vkAllocateMemory(deviceHandle, &memoryAllocateInfo, NULL,
+                            &deviceMemoryHandle);
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkAllocateMemory");
+  }
+
+  result = vkBindBufferMemory(deviceHandle, bufferHandle,
+                              deviceMemoryHandle, 0);
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkBindBufferMemory");
+  }
+}
+
+//*****************************************************
 
 void createVertexBuffer(VkBuffer& vertexBufferHandle, 
   const tinyobj::attrib_t &attrib,
   uint32_t& queueFamilyIndex, 
   VkDevice deviceHandle,
-  VkPhysicalDeviceMemoryProperties physicalDeviceMemoryProperties,
+  VkPhysicalDeviceMemoryProperties& physicalDeviceMemoryProperties,
   VkMemoryAllocateFlagsInfo& memoryAllocateFlagsInfo,
   PFN_vkGetBufferDeviceAddressKHR pvkGetBufferDeviceAddressKHR,
   VkDeviceMemory& vertexDeviceMemoryHandle,
@@ -141,32 +179,12 @@ void createVertexBuffer(VkBuffer& vertexBufferHandle,
     throwExceptionVulkanAPI(result, "vkCreateBuffer");
   }
 
-  VkMemoryRequirements vertexMemoryRequirements;
-  vkGetBufferMemoryRequirements(deviceHandle, vertexBufferHandle,
-                                &vertexMemoryRequirements);
-
-  uint32_t vertexMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
-    vertexMemoryRequirements,
+  allocAndBind(vertexDeviceMemoryHandle,
+    &memoryAllocateFlagsInfo,
+    physicalDeviceMemoryProperties,
+    vertexBufferHandle,
+    deviceHandle,
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-  
-  VkMemoryAllocateInfo vertexMemoryAllocateInfo = {
-      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-      .pNext = &memoryAllocateFlagsInfo,
-      .allocationSize = vertexMemoryRequirements.size,
-      .memoryTypeIndex = vertexMemoryTypeIndex};
-
-  vertexDeviceMemoryHandle = VK_NULL_HANDLE;
-  result = vkAllocateMemory(deviceHandle, &vertexMemoryAllocateInfo, NULL,
-                            &vertexDeviceMemoryHandle);
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkAllocateMemory");
-  }
-
-  result = vkBindBufferMemory(deviceHandle, vertexBufferHandle,
-                              vertexDeviceMemoryHandle, 0);
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkBindBufferMemory");
-  }
 
   void *hostVertexMemoryBuffer;
   result = vkMapMemory(deviceHandle, vertexDeviceMemoryHandle, 0,
@@ -223,32 +241,12 @@ void createIndexBuffer(VkBuffer& indexBufferHandle,
     throwExceptionVulkanAPI(result, "vkCreateBuffer");
   }
 
-  VkMemoryRequirements indexMemoryRequirements;
-  vkGetBufferMemoryRequirements(deviceHandle, indexBufferHandle,
-                                &indexMemoryRequirements);
-
-  uint32_t indexMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
-    indexMemoryRequirements,
+  allocAndBind(indexDeviceMemoryHandle,
+    &memoryAllocateFlagsInfo,
+    physicalDeviceMemoryProperties,
+    indexBufferHandle,
+    deviceHandle,
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-  
-  VkMemoryAllocateInfo indexMemoryAllocateInfo = {
-      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-      .pNext = &memoryAllocateFlagsInfo,
-      .allocationSize = indexMemoryRequirements.size,
-      .memoryTypeIndex = indexMemoryTypeIndex};
-
-  indexDeviceMemoryHandle = VK_NULL_HANDLE;
-  result = vkAllocateMemory(deviceHandle, &indexMemoryAllocateInfo, NULL,
-                            &indexDeviceMemoryHandle);
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkAllocateMemory");
-  }
-
-  result = vkBindBufferMemory(deviceHandle, indexBufferHandle,
-                              indexDeviceMemoryHandle, 0);
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkBindBufferMemory");
-  }
 
   void *hostIndexMemoryBuffer;
   result = vkMapMemory(deviceHandle, indexDeviceMemoryHandle, 0,
@@ -368,38 +366,12 @@ void createBLAS(VkAccelerationStructureKHR& bottomLevelAccelerationStructureHand
     throwExceptionVulkanAPI(result, "vkCreateBuffer");
   }
 
-  VkMemoryRequirements bottomLevelAccelerationStructureMemoryRequirements;
-  vkGetBufferMemoryRequirements(
-      deviceHandle, bottomLevelAccelerationStructureBufferHandle,
-      &bottomLevelAccelerationStructureMemoryRequirements);
-
-  uint32_t bottomLevelAccelerationStructureMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
-    bottomLevelAccelerationStructureMemoryRequirements,
+  allocAndBind(bottomLevelAccelerationStructureDeviceMemoryHandle,
+    NULL,
+    physicalDeviceMemoryProperties,
+    bottomLevelAccelerationStructureBufferHandle,
+    deviceHandle,
     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
- 
-  VkMemoryAllocateInfo bottomLevelAccelerationStructureMemoryAllocateInfo = {
-      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-      .pNext = NULL,
-      .allocationSize = bottomLevelAccelerationStructureMemoryRequirements.size,
-      .memoryTypeIndex = bottomLevelAccelerationStructureMemoryTypeIndex};
-
-  bottomLevelAccelerationStructureDeviceMemoryHandle = VK_NULL_HANDLE;
-
-  result = vkAllocateMemory(
-    deviceHandle, &bottomLevelAccelerationStructureMemoryAllocateInfo, NULL,
-    &bottomLevelAccelerationStructureDeviceMemoryHandle);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkAllocateMemory");
-  }
-
-  result = vkBindBufferMemory(
-      deviceHandle, bottomLevelAccelerationStructureBufferHandle,
-      bottomLevelAccelerationStructureDeviceMemoryHandle, 0);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkBindBufferMemory");
-  }
 
   VkAccelerationStructureCreateInfoKHR
       bottomLevelAccelerationStructureCreateInfo = {
@@ -469,42 +441,12 @@ void createBLASScratchBuffer(VkBuffer& bottomLevelAccelerationStructureScratchBu
     throwExceptionVulkanAPI(result, "vkCreateBuffer");
   }
 
-  VkMemoryRequirements
-    bottomLevelAccelerationStructureScratchMemoryRequirements;
-  vkGetBufferMemoryRequirements(
-    deviceHandle, bottomLevelAccelerationStructureScratchBufferHandle,
-    &bottomLevelAccelerationStructureScratchMemoryRequirements);
-
-  uint32_t bottomLevelAccelerationStructureScratchMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
-    bottomLevelAccelerationStructureScratchMemoryRequirements,
+  allocAndBind(bottomLevelAccelerationStructureDeviceScratchMemoryHandle,
+    &memoryAllocateFlagsInfo,
+    physicalDeviceMemoryProperties,
+    bottomLevelAccelerationStructureScratchBufferHandle,
+    deviceHandle,
     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-  
-  VkMemoryAllocateInfo
-    bottomLevelAccelerationStructureScratchMemoryAllocateInfo = {
-        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .pNext = &memoryAllocateFlagsInfo,
-        .allocationSize =
-            bottomLevelAccelerationStructureScratchMemoryRequirements.size,
-        .memoryTypeIndex =
-            bottomLevelAccelerationStructureScratchMemoryTypeIndex};
-  
-  bottomLevelAccelerationStructureDeviceScratchMemoryHandle = VK_NULL_HANDLE;
-
-  result = vkAllocateMemory(
-      deviceHandle, &bottomLevelAccelerationStructureScratchMemoryAllocateInfo,
-      NULL, &bottomLevelAccelerationStructureDeviceScratchMemoryHandle);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkAllocateMemory");
-  }
-
-  result = vkBindBufferMemory(
-      deviceHandle, bottomLevelAccelerationStructureScratchBufferHandle,
-      bottomLevelAccelerationStructureDeviceScratchMemoryHandle, 0);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkBindBufferMemory");
-  }
 
   VkBufferDeviceAddressInfo
     bottomLevelAccelerationStructureScratchBufferDeviceAddressInfo = {
@@ -1658,38 +1600,14 @@ int main() {
     throwExceptionVulkanAPI(result, "vkCreateBuffer");
   }
 
-  VkMemoryRequirements bottomLevelGeometryInstanceMemoryRequirements;
-  vkGetBufferMemoryRequirements(deviceHandle,
-                                bottomLevelGeometryInstanceBufferHandle,
-                                &bottomLevelGeometryInstanceMemoryRequirements);
-
-  uint32_t bottomLevelGeometryInstanceMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
-    bottomLevelGeometryInstanceMemoryRequirements,
-    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-
-  VkMemoryAllocateInfo bottomLevelGeometryInstanceMemoryAllocateInfo = {
-      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-      .pNext = &memoryAllocateFlagsInfo,
-      .allocationSize = bottomLevelGeometryInstanceMemoryRequirements.size,
-      .memoryTypeIndex = bottomLevelGeometryInstanceMemoryTypeIndex};
-
   VkDeviceMemory bottomLevelGeometryInstanceDeviceMemoryHandle = VK_NULL_HANDLE;
 
-  result = vkAllocateMemory(
-      deviceHandle, &bottomLevelGeometryInstanceMemoryAllocateInfo, NULL,
-      &bottomLevelGeometryInstanceDeviceMemoryHandle);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkAllocateMemory");
-  }
-
-  result =
-      vkBindBufferMemory(deviceHandle, bottomLevelGeometryInstanceBufferHandle,
-                         bottomLevelGeometryInstanceDeviceMemoryHandle, 0);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkBindBufferMemory");
-  }
+  allocAndBind(bottomLevelGeometryInstanceDeviceMemoryHandle,
+    &memoryAllocateFlagsInfo,
+    physicalDeviceMemoryProperties,
+    bottomLevelGeometryInstanceBufferHandle,
+    deviceHandle,
+    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 
   void *hostbottomLevelGeometryInstanceMemoryBuffer;
   result =
@@ -1784,39 +1702,15 @@ int main() {
     throwExceptionVulkanAPI(result, "vkCreateBuffer");
   }
 
-  VkMemoryRequirements topLevelAccelerationStructureMemoryRequirements;
-  vkGetBufferMemoryRequirements(
-      deviceHandle, topLevelAccelerationStructureBufferHandle,
-      &topLevelAccelerationStructureMemoryRequirements);
-
-  uint32_t topLevelAccelerationStructureMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
-    topLevelAccelerationStructureMemoryRequirements,
-    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-  
-  VkMemoryAllocateInfo topLevelAccelerationStructureMemoryAllocateInfo = {
-      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-      .pNext = NULL,
-      .allocationSize = topLevelAccelerationStructureMemoryRequirements.size,
-      .memoryTypeIndex = topLevelAccelerationStructureMemoryTypeIndex};
-
   VkDeviceMemory topLevelAccelerationStructureDeviceMemoryHandle =
-      VK_NULL_HANDLE;
+    VK_NULL_HANDLE;
 
-  result = vkAllocateMemory(
-      deviceHandle, &topLevelAccelerationStructureMemoryAllocateInfo, NULL,
-      &topLevelAccelerationStructureDeviceMemoryHandle);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkAllocateMemory");
-  }
-
-  result = vkBindBufferMemory(
-      deviceHandle, topLevelAccelerationStructureBufferHandle,
-      topLevelAccelerationStructureDeviceMemoryHandle, 0);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkBindBufferMemory");
-  }
+  allocAndBind(topLevelAccelerationStructureDeviceMemoryHandle,
+    NULL,
+    physicalDeviceMemoryProperties,
+    topLevelAccelerationStructureBufferHandle,
+    deviceHandle,
+    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
   VkAccelerationStructureCreateInfoKHR topLevelAccelerationStructureCreateInfo =
       {.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
@@ -1874,40 +1768,15 @@ int main() {
     throwExceptionVulkanAPI(result, "vkCreateBuffer");
   }
 
-  VkMemoryRequirements topLevelAccelerationStructureScratchMemoryRequirements;
-  vkGetBufferMemoryRequirements(
-      deviceHandle, topLevelAccelerationStructureScratchBufferHandle,
-      &topLevelAccelerationStructureScratchMemoryRequirements);
-
-  uint32_t topLevelAccelerationStructureScratchMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
-    topLevelAccelerationStructureScratchMemoryRequirements,
-    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
- 
-  VkMemoryAllocateInfo topLevelAccelerationStructureScratchMemoryAllocateInfo =
-      {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-       .pNext = &memoryAllocateFlagsInfo,
-       .allocationSize =
-           topLevelAccelerationStructureScratchMemoryRequirements.size,
-       .memoryTypeIndex = topLevelAccelerationStructureScratchMemoryTypeIndex};
-
   VkDeviceMemory topLevelAccelerationStructureDeviceScratchMemoryHandle =
-      VK_NULL_HANDLE;
+    VK_NULL_HANDLE;
 
-  result = vkAllocateMemory(
-      deviceHandle, &topLevelAccelerationStructureScratchMemoryAllocateInfo,
-      NULL, &topLevelAccelerationStructureDeviceScratchMemoryHandle);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkAllocateMemory");
-  }
-
-  result = vkBindBufferMemory(
-      deviceHandle, topLevelAccelerationStructureScratchBufferHandle,
-      topLevelAccelerationStructureDeviceScratchMemoryHandle, 0);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkBindBufferMemory");
-  }
+  allocAndBind(topLevelAccelerationStructureDeviceScratchMemoryHandle,
+    &memoryAllocateFlagsInfo,
+    physicalDeviceMemoryProperties,
+    topLevelAccelerationStructureScratchBufferHandle,
+    deviceHandle,
+    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
   VkBufferDeviceAddressInfo
       topLevelAccelerationStructureScratchBufferDeviceAddressInfo = {
@@ -2029,32 +1898,13 @@ int main() {
     throwExceptionVulkanAPI(result, "vkCreateBuffer");
   }
 
-  VkMemoryRequirements uniformMemoryRequirements;
-  vkGetBufferMemoryRequirements(deviceHandle, uniformBufferHandle,
-                                &uniformMemoryRequirements);
-
-  uint32_t uniformMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
-    uniformMemoryRequirements,
-    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-
-  VkMemoryAllocateInfo uniformMemoryAllocateInfo = {
-      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-      .pNext = &memoryAllocateFlagsInfo,
-      .allocationSize = uniformMemoryRequirements.size,
-      .memoryTypeIndex = uniformMemoryTypeIndex};
-
   VkDeviceMemory uniformDeviceMemoryHandle = VK_NULL_HANDLE;
-  result = vkAllocateMemory(deviceHandle, &uniformMemoryAllocateInfo, NULL,
-                            &uniformDeviceMemoryHandle);
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkAllocateMemory");
-  }
-
-  result = vkBindBufferMemory(deviceHandle, uniformBufferHandle,
-                              uniformDeviceMemoryHandle, 0);
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkBindBufferMemory");
-  }
+  allocAndBind(uniformDeviceMemoryHandle,
+    &memoryAllocateFlagsInfo,
+    physicalDeviceMemoryProperties,
+    uniformBufferHandle,
+    deviceHandle,
+    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 
   void *hostUniformMemoryBuffer;
   result = vkMapMemory(deviceHandle, uniformDeviceMemoryHandle, 0,
@@ -2347,32 +2197,13 @@ int main() {
     throwExceptionVulkanAPI(result, "vkCreateBuffer");
   }
 
-  VkMemoryRequirements materialIndexMemoryRequirements;
-  vkGetBufferMemoryRequirements(deviceHandle, materialIndexBufferHandle,
-                                &materialIndexMemoryRequirements);
-
-  uint32_t materialIndexMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
-    materialIndexMemoryRequirements,
-    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-  
-  VkMemoryAllocateInfo materialIndexMemoryAllocateInfo = {
-      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-      .pNext = &memoryAllocateFlagsInfo,
-      .allocationSize = materialIndexMemoryRequirements.size,
-      .memoryTypeIndex = materialIndexMemoryTypeIndex};
-
   VkDeviceMemory materialIndexDeviceMemoryHandle = VK_NULL_HANDLE;
-  result = vkAllocateMemory(deviceHandle, &materialIndexMemoryAllocateInfo,
-                            NULL, &materialIndexDeviceMemoryHandle);
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkAllocateMemory");
-  }
-
-  result = vkBindBufferMemory(deviceHandle, materialIndexBufferHandle,
-                              materialIndexDeviceMemoryHandle, 0);
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkBindBufferMemory");
-  }
+  allocAndBind(materialIndexDeviceMemoryHandle,
+    &memoryAllocateFlagsInfo,
+    physicalDeviceMemoryProperties,
+    materialIndexBufferHandle,
+    deviceHandle,
+    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 
   void *hostMaterialIndexMemoryBuffer;
   result = vkMapMemory(deviceHandle, materialIndexDeviceMemoryHandle, 0,
@@ -2424,32 +2255,13 @@ int main() {
     throwExceptionVulkanAPI(result, "vkCreateBuffer");
   }
 
-  VkMemoryRequirements materialMemoryRequirements;
-  vkGetBufferMemoryRequirements(deviceHandle, materialBufferHandle,
-                                &materialMemoryRequirements);
-
-  uint32_t materialMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
-    materialMemoryRequirements,
-    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
- 
-  VkMemoryAllocateInfo materialMemoryAllocateInfo = {
-      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-      .pNext = &memoryAllocateFlagsInfo,
-      .allocationSize = materialMemoryRequirements.size,
-      .memoryTypeIndex = materialMemoryTypeIndex};
-
   VkDeviceMemory materialDeviceMemoryHandle = VK_NULL_HANDLE;
-  result = vkAllocateMemory(deviceHandle, &materialMemoryAllocateInfo, NULL,
-                            &materialDeviceMemoryHandle);
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkAllocateMemory");
-  }
-
-  result = vkBindBufferMemory(deviceHandle, materialBufferHandle,
-                              materialDeviceMemoryHandle, 0);
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkBindBufferMemory");
-  }
+  allocAndBind(materialDeviceMemoryHandle,
+    &memoryAllocateFlagsInfo,
+    physicalDeviceMemoryProperties,
+    materialBufferHandle,
+    deviceHandle,
+    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 
   void *hostMaterialMemoryBuffer;
   result = vkMapMemory(deviceHandle, materialDeviceMemoryHandle, 0,
@@ -2524,32 +2336,13 @@ int main() {
     throwExceptionVulkanAPI(result, "vkCreateBuffer");
   }
 
-  VkMemoryRequirements shaderBindingTableMemoryRequirements;
-  vkGetBufferMemoryRequirements(deviceHandle, shaderBindingTableBufferHandle,
-                                &shaderBindingTableMemoryRequirements);
-
-  uint32_t shaderBindingTableMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
-    shaderBindingTableMemoryRequirements,
-    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-  
-  VkMemoryAllocateInfo shaderBindingTableMemoryAllocateInfo = {
-      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-      .pNext = &memoryAllocateFlagsInfo,
-      .allocationSize = shaderBindingTableMemoryRequirements.size,
-      .memoryTypeIndex = shaderBindingTableMemoryTypeIndex};
-
   VkDeviceMemory shaderBindingTableDeviceMemoryHandle = VK_NULL_HANDLE;
-  result = vkAllocateMemory(deviceHandle, &shaderBindingTableMemoryAllocateInfo,
-                            NULL, &shaderBindingTableDeviceMemoryHandle);
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkAllocateMemory");
-  }
-
-  result = vkBindBufferMemory(deviceHandle, shaderBindingTableBufferHandle,
-                              shaderBindingTableDeviceMemoryHandle, 0);
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkBindBufferMemory");
-  }
+  allocAndBind(shaderBindingTableDeviceMemoryHandle,
+    &memoryAllocateFlagsInfo,
+    physicalDeviceMemoryProperties,
+    shaderBindingTableBufferHandle,
+    deviceHandle,
+    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 
   char *shaderHandleBuffer = new char[shaderBindingTableSize];
   result = pvkGetRayTracingShaderGroupHandlesKHR(

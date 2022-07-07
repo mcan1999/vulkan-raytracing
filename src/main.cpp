@@ -101,8 +101,7 @@ void throwExceptionMessage(std::string message) {
 }
 
 //************** Helpers ****************************
-uint32_t getMemoryIndex(VkPhysicalDeviceMemoryProperties& physicalDeviceMemoryProperties,
-  VkMemoryRequirements& memoryRequirements,
+uint32_t getMemoryIndex(VkMemoryRequirements& memoryRequirements,
   VkMemoryPropertyFlagBits memoryFlagBits)
 {
   uint32_t memoryIndex = -1;
@@ -125,18 +124,14 @@ uint32_t getMemoryIndex(VkPhysicalDeviceMemoryProperties& physicalDeviceMemoryPr
 
 void allocAndBind(VkDeviceMemory& deviceMemoryHandle,
   VkMemoryAllocateFlagsInfo* memoryAllocateFlagsInfoPtr,
-  VkPhysicalDeviceMemoryProperties& physicalDeviceMemoryProperties,
   VkBuffer& bufferHandle,
-  VkDevice& deviceHandle,
   VkMemoryPropertyFlagBits memoryFlagBits)
 {
   VkMemoryRequirements memoryRequirements;
   vkGetBufferMemoryRequirements(deviceHandle, bufferHandle,
                                 &memoryRequirements);
 
-  uint32_t memoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
-    memoryRequirements,
-    memoryFlagBits);
+  uint32_t memoryTypeIndex = getMemoryIndex(memoryRequirements, memoryFlagBits);
   
   VkMemoryAllocateInfo memoryAllocateInfo = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -159,8 +154,7 @@ void allocAndBind(VkDeviceMemory& deviceMemoryHandle,
   }
 }
 
-void copyData(VkDevice& deviceHandle,
-  VkDeviceMemory &deviceMemoryHandle,
+void copyData(VkDeviceMemory &deviceMemoryHandle,
   void* data,
   VkDeviceSize dataSize){
   void *hostVertexMemoryBuffer;
@@ -205,10 +199,7 @@ void createBuffer(VkBuffer& bufferHandle,
 void createVertexBuffer(VkBuffer& vertexBufferHandle, 
   const tinyobj::attrib_t &attrib,
   uint32_t& queueFamilyIndex, 
-  VkDevice deviceHandle,
-  VkPhysicalDeviceMemoryProperties& physicalDeviceMemoryProperties,
   VkMemoryAllocateFlagsInfo& memoryAllocateFlagsInfo,
-  PFN_vkGetBufferDeviceAddressKHR pvkGetBufferDeviceAddressKHR,
   VkDeviceMemory& vertexDeviceMemoryHandle,
   VkDeviceAddress& vertexBufferDeviceAddress)
 {
@@ -222,13 +213,10 @@ void createVertexBuffer(VkBuffer& vertexBufferHandle,
 
   allocAndBind(vertexDeviceMemoryHandle,
     &memoryAllocateFlagsInfo,
-    physicalDeviceMemoryProperties,
     vertexBufferHandle,
-    deviceHandle,
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 
-  copyData(deviceHandle,
-    vertexDeviceMemoryHandle,
+  copyData(vertexDeviceMemoryHandle,
     (void *) attrib.vertices.data(),
     sizeof(float) * attrib.vertices.size() * 3);
 
@@ -244,10 +232,7 @@ void createVertexBuffer(VkBuffer& vertexBufferHandle,
 void createIndexBuffer(VkBuffer& indexBufferHandle, 
   std::vector<uint32_t>& indexList,
   uint32_t& queueFamilyIndex,
-  VkDevice deviceHandle,
-  VkPhysicalDeviceMemoryProperties physicalDeviceMemoryProperties,
   VkMemoryAllocateFlagsInfo& memoryAllocateFlagsInfo,
-  PFN_vkGetBufferDeviceAddressKHR pvkGetBufferDeviceAddressKHR,
   VkDeviceMemory& indexDeviceMemoryHandle,
   VkDeviceAddress& indexBufferDeviceAddress)
 {
@@ -260,13 +245,10 @@ void createIndexBuffer(VkBuffer& indexBufferHandle,
   
   allocAndBind(indexDeviceMemoryHandle,
     &memoryAllocateFlagsInfo,
-    physicalDeviceMemoryProperties,
     indexBufferHandle,
-    deviceHandle,
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
   
-  copyData(deviceHandle,
-    indexDeviceMemoryHandle,
+  copyData(indexDeviceMemoryHandle,
     (void *) indexList.data(),
     sizeof(uint32_t) * indexList.size());
 
@@ -310,11 +292,7 @@ void createBLASGeometry(VkAccelerationStructureGeometryKHR& bottomLevelAccelerat
 void createBLAS(VkAccelerationStructureKHR& bottomLevelAccelerationStructureHandle,
   VkAccelerationStructureGeometryKHR& bottomLevelAccelerationStructureGeometry,
   uint32_t primitiveCount,
-  PFN_vkGetAccelerationStructureBuildSizesKHR pvkGetAccelerationStructureBuildSizesKHR,
-  PFN_vkCreateAccelerationStructureKHR pvkCreateAccelerationStructureKHR,
-  VkDevice deviceHandle,
   uint32_t& queueFamilyIndex,
-  VkPhysicalDeviceMemoryProperties& physicalDeviceMemoryProperties,
   VkBuffer& bottomLevelAccelerationStructureBufferHandle,
   VkDeviceMemory& bottomLevelAccelerationStructureDeviceMemoryHandle,
   VkAccelerationStructureBuildSizesInfoKHR& bottomLevelAccelerationStructureBuildSizesInfo,
@@ -363,9 +341,7 @@ void createBLAS(VkAccelerationStructureKHR& bottomLevelAccelerationStructureHand
 
   allocAndBind(bottomLevelAccelerationStructureDeviceMemoryHandle,
     NULL,
-    physicalDeviceMemoryProperties,
     bottomLevelAccelerationStructureBufferHandle,
-    deviceHandle,
     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
   VkAccelerationStructureCreateInfoKHR
@@ -395,14 +371,10 @@ void createBLAS(VkAccelerationStructureKHR& bottomLevelAccelerationStructureHand
 void createBLASScratchBuffer(VkBuffer& bottomLevelAccelerationStructureScratchBufferHandle,
   VkAccelerationStructureKHR& bottomLevelAccelerationStructureHandle,
   VkDeviceAddress& bottomLevelAccelerationStructureDeviceAddress,
-  PFN_vkGetAccelerationStructureDeviceAddressKHR pvkGetAccelerationStructureDeviceAddressKHR,
-  VkDevice deviceHandle,
   VkAccelerationStructureBuildSizesInfoKHR& bottomLevelAccelerationStructureBuildSizesInfo,
   uint32_t& queueFamilyIndex,
-  VkPhysicalDeviceMemoryProperties& physicalDeviceMemoryProperties,
   VkMemoryAllocateFlagsInfo& memoryAllocateFlagsInfo,
   VkDeviceMemory& bottomLevelAccelerationStructureDeviceScratchMemoryHandle,
-  PFN_vkGetBufferDeviceAddressKHR pvkGetBufferDeviceAddressKHR,
   VkAccelerationStructureBuildGeometryInfoKHR& bottomLevelAccelerationStructureBuildGeometryInfo
 ){
   VkAccelerationStructureDeviceAddressInfoKHR
@@ -425,9 +397,7 @@ void createBLASScratchBuffer(VkBuffer& bottomLevelAccelerationStructureScratchBu
 
   allocAndBind(bottomLevelAccelerationStructureDeviceScratchMemoryHandle,
     &memoryAllocateFlagsInfo,
-    physicalDeviceMemoryProperties,
     bottomLevelAccelerationStructureScratchBufferHandle,
-    deviceHandle,
     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
   VkBufferDeviceAddressInfo
@@ -451,7 +421,6 @@ void createBLASScratchBuffer(VkBuffer& bottomLevelAccelerationStructureScratchBu
 
 void buildBLAS(VkCommandBuffer& commandBufferHandle,
   VkAccelerationStructureBuildRangeInfoKHR& bottomLevelAccelerationStructureBuildRangeInfo,
-  PFN_vkCmdBuildAccelerationStructuresKHR pvkCmdBuildAccelerationStructuresKHR,
   VkAccelerationStructureBuildGeometryInfoKHR& bottomLevelAccelerationStructureBuildGeometryInfo,
   VkFence& bottomLevelAccelerationStructureBuildFenceHandle,
   VkDevice deviceHandle,
@@ -550,13 +519,10 @@ void createTLAS(VkAccelerationStructureKHR& topLevelAccelerationStructureHandle,
 
   allocAndBind(bottomLevelGeometryInstanceDeviceMemoryHandle,
     &memoryAllocateFlagsInfo,
-    physicalDeviceMemoryProperties,
     bottomLevelGeometryInstanceBufferHandle,
-    deviceHandle,
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
   
-  copyData(deviceHandle,
-    bottomLevelGeometryInstanceDeviceMemoryHandle,
+  copyData(bottomLevelGeometryInstanceDeviceMemoryHandle,
     (void *) &bottomLevelAccelerationStructureInstance,
     sizeof(VkAccelerationStructureInstanceKHR));
 
@@ -629,9 +595,7 @@ void createTLAS(VkAccelerationStructureKHR& topLevelAccelerationStructureHandle,
     topLevelAccelerationStructureDeviceMemoryHandle = VK_NULL_HANDLE;
     allocAndBind(topLevelAccelerationStructureDeviceMemoryHandle,
       NULL,
-      physicalDeviceMemoryProperties,
       topLevelAccelerationStructureBufferHandle,
-      deviceHandle,
       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     
     VkAccelerationStructureCreateInfoKHR topLevelAccelerationStructureCreateInfo =
@@ -682,9 +646,7 @@ void createTLAS(VkAccelerationStructureKHR& topLevelAccelerationStructureHandle,
 
   allocAndBind(topLevelAccelerationStructureDeviceScratchMemoryHandle,
     &memoryAllocateFlagsInfo,
-    physicalDeviceMemoryProperties,
     topLevelAccelerationStructureScratchBufferHandle,
-    deviceHandle,
     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
   
    VkBufferDeviceAddressInfo
@@ -1678,10 +1640,7 @@ int main() {
       createVertexBuffer(vertexBufferHandle[i], 
         attrib[i], 
         queueFamilyIndex, 
-        deviceHandle, 
-        physicalDeviceMemoryProperties,
         memoryAllocateFlagsInfo,
-        pvkGetBufferDeviceAddressKHR,
         vertexDeviceMemoryHandle[i],
         vertexBufferDeviceAddress[i]);
   }
@@ -1698,15 +1657,11 @@ int main() {
     createIndexBuffer(indexBufferHandle[i], 
       indexList[i], 
       queueFamilyIndex, 
-      deviceHandle, 
-      physicalDeviceMemoryProperties,
       memoryAllocateFlagsInfo,
-      pvkGetBufferDeviceAddressKHR,
       indexDeviceMemoryHandle[i],
       indexBufferDeviceAddress[i]
     );
   }
-
 
   // =========================================================================
   // Bottom Level Acceleration Structure
@@ -1742,11 +1697,7 @@ int main() {
     createBLAS(bottomLevelAccelerationStructureHandle[i],
       bottomLevelAccelerationStructureGeometry[i],
       primitiveCount[i],
-      pvkGetAccelerationStructureBuildSizesKHR,
-      pvkCreateAccelerationStructureKHR,
-      deviceHandle,
       queueFamilyIndex,
-      physicalDeviceMemoryProperties,
       bottomLevelAccelerationStructureBufferHandle[i],
       bottomLevelAccelerationStructureDeviceMemoryHandle[i],
       bottomLevelAccelerationStructureBuildSizesInfo[i],
@@ -1763,14 +1714,10 @@ int main() {
     createBLASScratchBuffer(bottomLevelAccelerationStructureScratchBufferHandle[i],
       bottomLevelAccelerationStructureHandle[i],
       bottomLevelAccelerationStructureDeviceAddress[i],
-      pvkGetAccelerationStructureDeviceAddressKHR,
-      deviceHandle,
       bottomLevelAccelerationStructureBuildSizesInfo[i],
       queueFamilyIndex,
-      physicalDeviceMemoryProperties,
       memoryAllocateFlagsInfo,
       bottomLevelAccelerationStructureDeviceScratchMemoryHandle[i],
-      pvkGetBufferDeviceAddressKHR,
       bottomLevelAccelerationStructureBuildGeometryInfo[i]);
   }
 
@@ -1789,7 +1736,6 @@ int main() {
   for(int i = 0; i < objectCount; i++){
     buildBLAS(commandBufferHandleList.back(),
       bottomLevelAccelerationStructureBuildRangeInfo[i],
-      pvkCmdBuildAccelerationStructuresKHR,
       bottomLevelAccelerationStructureBuildGeometryInfo[i],
       bottomLevelAccelerationStructureBuildFenceHandle,
       deviceHandle,
@@ -1853,13 +1799,10 @@ int main() {
   VkDeviceMemory uniformDeviceMemoryHandle = VK_NULL_HANDLE;
   allocAndBind(uniformDeviceMemoryHandle,
     &memoryAllocateFlagsInfo,
-    physicalDeviceMemoryProperties,
     uniformBufferHandle,
-    deviceHandle,
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
   
-  copyData(deviceHandle,
-    uniformDeviceMemoryHandle,
+  copyData(uniformDeviceMemoryHandle,
     (void *) &uniformStructure,
     sizeof(UniformStructure));
 
@@ -1897,8 +1840,7 @@ int main() {
   vkGetImageMemoryRequirements(deviceHandle, rayTraceImageHandle,
                                &rayTraceImageMemoryRequirements);
 
-  uint32_t rayTraceImageMemoryTypeIndex = getMemoryIndex(physicalDeviceMemoryProperties,
-    rayTraceImageMemoryRequirements,
+  uint32_t rayTraceImageMemoryTypeIndex = getMemoryIndex(rayTraceImageMemoryRequirements,
     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
   
   VkMemoryAllocateInfo rayTraceImageMemoryAllocateInfo = {
@@ -2136,13 +2078,10 @@ int main() {
   VkDeviceMemory materialIndexDeviceMemoryHandle = VK_NULL_HANDLE;
   allocAndBind(materialIndexDeviceMemoryHandle,
     &memoryAllocateFlagsInfo,
-    physicalDeviceMemoryProperties,
     materialIndexBufferHandle,
-    deviceHandle,
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
   
-  copyData(deviceHandle,
-    materialIndexDeviceMemoryHandle,
+  copyData(materialIndexDeviceMemoryHandle,
     (void *) materialIndexList[0].data(),
     sizeof(uint32_t) * materialIndexList[0].size());
 
@@ -2173,13 +2112,10 @@ int main() {
   VkDeviceMemory materialDeviceMemoryHandle = VK_NULL_HANDLE;
   allocAndBind(materialDeviceMemoryHandle,
     &memoryAllocateFlagsInfo,
-    physicalDeviceMemoryProperties,
     materialBufferHandle,
-    deviceHandle,
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
   
-  copyData(deviceHandle,
-    materialDeviceMemoryHandle,
+  copyData(materialDeviceMemoryHandle,
     (void *)  materialList.data(),
     sizeof(Material) * materialList.size());
 
@@ -2233,9 +2169,7 @@ int main() {
   VkDeviceMemory shaderBindingTableDeviceMemoryHandle = VK_NULL_HANDLE;
   allocAndBind(shaderBindingTableDeviceMemoryHandle,
     &memoryAllocateFlagsInfo,
-    physicalDeviceMemoryProperties,
     shaderBindingTableBufferHandle,
-    deviceHandle,
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 
   char *shaderHandleBuffer = new char[shaderBindingTableSize];
@@ -2582,8 +2516,7 @@ int main() {
       uniformStructure.frameCount += 1;
     }
 
-    copyData(deviceHandle,
-      uniformDeviceMemoryHandle,
+    copyData(uniformDeviceMemoryHandle,
       (void *) &uniformStructure,
       sizeof(UniformStructure));
 
@@ -2721,7 +2654,6 @@ int main() {
     vkFreeMemory(deviceHandle, vertexDeviceMemoryHandle[i], NULL);
     vkDestroyBuffer(deviceHandle, vertexBufferHandle[i], NULL);
    }
-
 
   vkDestroyPipeline(deviceHandle, rayTracingPipelineHandle, NULL);
   vkDestroyShaderModule(deviceHandle, rayMissShadowShaderModuleHandle, NULL);

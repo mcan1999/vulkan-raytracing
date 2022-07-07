@@ -1,4 +1,4 @@
-CFLAGS = -std=c++17 -O2
+CFLAGS = -std=c++17
 LDFLAGS = -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi
 
 SRC_DIR := src
@@ -15,7 +15,11 @@ VULKAN_VERSION = vulkan1.3
 default_target: all
 .PHONY : default_target
 
+all: CFLAGS += -O2
 all: main shader
+
+debug: CFLAGS += -Og -g
+debug: main shader
 
 main: $(SRC) $(INC)
 		g++ $(CFLAGS) -I $(INC_DIR) -o main $(SRC)  $(LDFLAGS)

@@ -391,10 +391,17 @@ void createBLASScratchBuffer(VkBuffer& bottomLevelAccelerationStructureScratchBu
 void buildBLAS(VkCommandBuffer& commandBufferHandle,
   VkAccelerationStructureBuildRangeInfoKHR& bottomLevelAccelerationStructureBuildRangeInfo,
   VkAccelerationStructureBuildGeometryInfoKHR& bottomLevelAccelerationStructureBuildGeometryInfo,
-  VkFence& bottomLevelAccelerationStructureBuildFenceHandle,
   VkDevice deviceHandle,
   VkQueue& queueHandle)
 {
+
+  VkFenceCreateInfo bottomLevelAccelerationStructureBuildFenceCreateInfo = {
+  .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, .pNext = NULL, .flags = 0};
+
+  VkFence bottomLevelAccelerationStructureBuildFenceHandle = VK_NULL_HANDLE;
+  VkResult result = vkCreateFence(
+      deviceHandle, &bottomLevelAccelerationStructureBuildFenceCreateInfo, NULL,
+      &bottomLevelAccelerationStructureBuildFenceHandle);
   
   VkCommandBufferBeginInfo bottomLevelCommandBufferBeginInfo = {
     .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -402,7 +409,7 @@ void buildBLAS(VkCommandBuffer& commandBufferHandle,
     .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
     .pInheritanceInfo = NULL};
 
-  VkResult result = vkBeginCommandBuffer(commandBufferHandle,
+   result = vkBeginCommandBuffer(commandBufferHandle,
                               &bottomLevelCommandBufferBeginInfo);
 
   if (result != VK_SUCCESS) {
@@ -451,12 +458,30 @@ void buildBLAS(VkCommandBuffer& commandBufferHandle,
     throwExceptionVulkanAPI(result, "vkWaitForFences");
   }
 
+  vkDestroyFence(deviceHandle, bottomLevelAccelerationStructureBuildFenceHandle,
+                 NULL);
+
 }
 
-void createTLAS(VkAccelerationStructureKHR& topLevelAccelerationStructureHandle,
-  VkDeviceAddress& bottomLevelAccelerationStructureDeviceAddress,
+void createInstance(VkAccelerationStructureInstanceKHR& bottomLevelAccelerationStructureInstance,
+   VkDeviceAddress& bottomLevelAccelerationStructureDeviceAddress,
   VkTransformMatrixKHR& transformMatrix,
-  uint32_t objIndex,
+  uint32_t objIndex)
+{
+  bottomLevelAccelerationStructureInstance =
+  {.transform = transformMatrix,
+    .instanceCustomIndex = objIndex,
+    .mask = 0xFF,
+    .instanceShaderBindingTableRecordOffset = 0, //TODO shader binding
+    .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
+    .accelerationStructureReference =
+        bottomLevelAccelerationStructureDeviceAddress};
+}
+
+  
+
+void createTLAS(VkAccelerationStructureKHR& topLevelAccelerationStructureHandle,
+  std::vector<VkAccelerationStructureInstanceKHR>& bottomLevelAccelerationStructureInstance,
   uint32_t& queueFamilyIndex,
   VkMemoryAllocateFlagsInfo memoryAllocateFlagsInfo,
   VkBuffer& topLevelAccelerationStructureBufferHandle,
@@ -467,42 +492,21 @@ void createTLAS(VkAccelerationStructureKHR& topLevelAccelerationStructureHandle,
 {
   VkResult result;
 
-  VkAccelerationStructureInstanceKHR bottomLevelAccelerationStructureInstance =
-  {.transform = transformMatrix,
-    .instanceCustomIndex = objIndex,
-    .mask = 0xFF,
-    .instanceShaderBindingTableRecordOffset = 0, //TODO shader binding
-    .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
-    .accelerationStructureReference =
-        bottomLevelAccelerationStructureDeviceAddress};
-
-  // create buffer for each tla (NV createsone buffer)
+  // create a buffer including all instances
   VkBuffer bottomLevelGeometryInstanceBufferHandle = VK_NULL_HANDLE;
-  createBuffer(bottomLevelGeometryInstanceBufferHandle,
-    sizeof(VkAccelerationStructureInstanceKHR),
+  VkDeviceMemory bottomLevelGeometryInstanceDeviceMemoryHandle = VK_NULL_HANDLE;
+  VkDeviceAddress bottomLevelGeometryInstanceDeviceAddress;
+
+  buildBuffer(bottomLevelGeometryInstanceBufferHandle, 
+    sizeof(VkAccelerationStructureInstanceKHR) * bottomLevelAccelerationStructureInstance.size(),
+    queueFamilyIndex,
+    (void*) bottomLevelAccelerationStructureInstance.data(),
       VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
       VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-    queueFamilyIndex);
-
-  VkDeviceMemory bottomLevelGeometryInstanceDeviceMemoryHandle = VK_NULL_HANDLE;
-
-  allocAndBind(bottomLevelGeometryInstanceDeviceMemoryHandle,
+    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
     &memoryAllocateFlagsInfo,
-    bottomLevelGeometryInstanceBufferHandle,
-    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-  
-  copyData(bottomLevelGeometryInstanceDeviceMemoryHandle,
-    (void *) &bottomLevelAccelerationStructureInstance,
-    sizeof(VkAccelerationStructureInstanceKHR));
-
-  VkBufferDeviceAddressInfo bottomLevelGeometryInstanceDeviceAddressInfo = {
-      .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-      .pNext = NULL,
-      .buffer = bottomLevelGeometryInstanceBufferHandle};
-  
-  VkDeviceAddress bottomLevelGeometryInstanceDeviceAddress =
-    pvkGetBufferDeviceAddressKHR(
-        deviceHandle, &bottomLevelGeometryInstanceDeviceAddressInfo);
+    bottomLevelGeometryInstanceDeviceMemoryHandle,
+    bottomLevelGeometryInstanceDeviceAddress);
 
   VkAccelerationStructureGeometryDataKHR topLevelAccelerationStructureGeometryData =
     {.instances = {
@@ -545,8 +549,9 @@ void createTLAS(VkAccelerationStructureKHR& topLevelAccelerationStructureHandle,
       .accelerationStructureSize = 0,
       .updateScratchSize = 0,
       .buildScratchSize = 0};
-    
-  std::vector<uint32_t> topLevelMaxPrimitiveCountList = {1};
+  
+  uint32_t instanceCount =  (uint32_t) bottomLevelAccelerationStructureInstance.size();
+  std::vector<uint32_t> topLevelMaxPrimitiveCountList = { instanceCount };
 
   pvkGetAccelerationStructureBuildSizesKHR(
       deviceHandle, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
@@ -591,7 +596,7 @@ void createTLAS(VkAccelerationStructureKHR& topLevelAccelerationStructureHandle,
   }
   
   //----------------------build----------------------
-
+  /*
   VkAccelerationStructureDeviceAddressInfoKHR
     topLevelAccelerationStructureDeviceAddressInfo = {
         .sType =
@@ -601,7 +606,7 @@ void createTLAS(VkAccelerationStructureKHR& topLevelAccelerationStructureHandle,
   
   VkDeviceAddress topLevelAccelerationStructureDeviceAddress =
       pvkGetAccelerationStructureDeviceAddressKHR(
-          deviceHandle, &topLevelAccelerationStructureDeviceAddressInfo);
+          deviceHandle, &topLevelAccelerationStructureDeviceAddressInfo);*/
   
   VkBuffer topLevelAccelerationStructureScratchBufferHandle = VK_NULL_HANDLE;
   createBuffer(topLevelAccelerationStructureScratchBufferHandle,
@@ -618,11 +623,11 @@ void createTLAS(VkAccelerationStructureKHR& topLevelAccelerationStructureHandle,
     topLevelAccelerationStructureScratchBufferHandle,
     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
   
-   VkBufferDeviceAddressInfo
-      topLevelAccelerationStructureScratchBufferDeviceAddressInfo = {
-          .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-          .pNext = NULL,
-          .buffer = topLevelAccelerationStructureScratchBufferHandle};
+  VkBufferDeviceAddressInfo
+    topLevelAccelerationStructureScratchBufferDeviceAddressInfo = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+        .pNext = NULL,
+        .buffer = topLevelAccelerationStructureScratchBufferHandle};
 
   VkDeviceAddress topLevelAccelerationStructureScratchBufferDeviceAddress =
       pvkGetBufferDeviceAddressKHR(
@@ -639,7 +644,7 @@ void createTLAS(VkAccelerationStructureKHR& topLevelAccelerationStructureHandle,
       .deviceAddress = topLevelAccelerationStructureScratchBufferDeviceAddress};
   
   VkAccelerationStructureBuildRangeInfoKHR
-    topLevelAccelerationStructureBuildRangeInfo = {.primitiveCount = 1,
+    topLevelAccelerationStructureBuildRangeInfo = {.primitiveCount = instanceCount,
                                                     .primitiveOffset = 0,
                                                     .firstVertex = 0,
                                                     .transformOffset = 0};
@@ -1245,6 +1250,16 @@ int main() {
        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
        .descriptorCount = 1,
        .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR,
+       .pImmutableSamplers = NULL},
+      {.binding = 5,
+       .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+       .descriptorCount = 1,
+       .stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
+       .pImmutableSamplers = NULL},
+      {.binding = 6,
+       .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+       .descriptorCount = 1,
+       .stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
        .pImmutableSamplers = NULL}};
 
   VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {
@@ -1264,42 +1279,10 @@ int main() {
   }
 
   // =========================================================================
-  // Material Descriptor Set Layout
-
-  std::vector<VkDescriptorSetLayoutBinding>
-      materialDescriptorSetLayoutBindingList = {
-          {.binding = 0,
-           .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-           .descriptorCount = 1,
-           .stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
-           .pImmutableSamplers = NULL},
-          {.binding = 1,
-           .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-           .descriptorCount = 1,
-           .stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
-           .pImmutableSamplers = NULL}};
-
-  VkDescriptorSetLayoutCreateInfo materialDescriptorSetLayoutCreateInfo = {
-      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-      .pNext = NULL,
-      .flags = 0,
-      .bindingCount = (uint32_t)materialDescriptorSetLayoutBindingList.size(),
-      .pBindings = materialDescriptorSetLayoutBindingList.data()};
-
-  VkDescriptorSetLayout materialDescriptorSetLayoutHandle = VK_NULL_HANDLE;
-  result = vkCreateDescriptorSetLayout(
-      deviceHandle, &materialDescriptorSetLayoutCreateInfo, NULL,
-      &materialDescriptorSetLayoutHandle);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkCreateDescriptorSetLayout");
-  }
-
-  // =========================================================================
   // Allocate Descriptor Sets
 
   std::vector<VkDescriptorSetLayout> descriptorSetLayoutHandleList = {
-      descriptorSetLayoutHandle, materialDescriptorSetLayoutHandle};
+      descriptorSetLayoutHandle};
 
   VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -1309,7 +1292,7 @@ int main() {
       .pSetLayouts = descriptorSetLayoutHandleList.data()};
 
   std::vector<VkDescriptorSet> descriptorSetHandleList =
-      std::vector<VkDescriptorSet>(2, VK_NULL_HANDLE);
+      std::vector<VkDescriptorSet>(1, VK_NULL_HANDLE);
 
   result = vkAllocateDescriptorSets(deviceHandle, &descriptorSetAllocateInfo,
                                     descriptorSetHandleList.data());
@@ -1553,11 +1536,10 @@ int main() {
 
   std::vector<tinyobj::attrib_t> attrib;
   std::vector<std::vector<tinyobj::shape_t>> shapes;
-  std::vector<std::vector<tinyobj::material_t>> materials;
-  
-
+ 
   std::vector<const char*> fileNames = {
-    "resources/cube_scene.obj"
+    "resources/teapot.obj",
+    "resources/armadillo.obj"
   };
 
   uint32_t objectCount = fileNames.size();
@@ -1569,14 +1551,10 @@ int main() {
 
     const std::vector<tinyobj::shape_t>& readShapes = reader.GetShapes();
     shapes.push_back(readShapes);
-     
-    const std::vector<tinyobj::material_t>& readMaterials = reader.GetMaterials();
-    materials.push_back(readMaterials);
   }
 
   assert(attrib.size() == objectCount);
   assert(shapes.size() == objectCount);
-  assert(materials.size() == objectCount);
 
   std::vector<uint32_t> primitiveCount(objectCount, 0);
 
@@ -1716,14 +1694,6 @@ int main() {
       bottomLevelAccelerationStructureDeviceScratchMemoryHandle[i],
       bottomLevelAccelerationStructureBuildGeometryInfo[i]);
   }
-
-  VkFenceCreateInfo bottomLevelAccelerationStructureBuildFenceCreateInfo = {
-    .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, .pNext = NULL, .flags = 0};
-
-  VkFence bottomLevelAccelerationStructureBuildFenceHandle = VK_NULL_HANDLE;
-  result = vkCreateFence(
-      deviceHandle, &bottomLevelAccelerationStructureBuildFenceCreateInfo, NULL,
-      &bottomLevelAccelerationStructureBuildFenceHandle);
   
   if (result != VK_SUCCESS) {
     throwExceptionVulkanAPI(result, "vkCreateFence");
@@ -1733,7 +1703,6 @@ int main() {
     buildBLAS(commandBufferHandleList.back(),
       bottomLevelAccelerationStructureBuildRangeInfo[i],
       bottomLevelAccelerationStructureBuildGeometryInfo[i],
-      bottomLevelAccelerationStructureBuildFenceHandle,
       deviceHandle,
       queueHandle);
   }
@@ -1749,23 +1718,27 @@ int main() {
       {0.0, 0.0, 1.0, 0.0}}
   };
 
-  std::vector<VkAccelerationStructureKHR> topLevelAccelerationStructureHandle(objectCount);
-  std::vector<VkBuffer> topLevelAccelerationStructureBufferHandle(objectCount);
-  std::vector<VkDeviceMemory> topLevelAccelerationStructureDeviceMemoryHandle(objectCount);
+  std::vector<VkAccelerationStructureInstanceKHR> bottomLevelAccelerationStructureInstance(objectCount);
+  VkAccelerationStructureKHR topLevelAccelerationStructureHandle;
+  VkBuffer topLevelAccelerationStructureBufferHandle;
+  VkDeviceMemory topLevelAccelerationStructureDeviceMemoryHandle;
 
   for(int i = 0; i < objectCount; i++){
-   createTLAS(topLevelAccelerationStructureHandle[i],
+    createInstance(bottomLevelAccelerationStructureInstance[i],
       bottomLevelAccelerationStructureDeviceAddress[i],
       transformMatrix,
-      i,
-      queueFamilyIndex,
-      memoryAllocateFlagsInfo,
-      topLevelAccelerationStructureBufferHandle[i],
-      topLevelAccelerationStructureDeviceMemoryHandle[i],
-      commandBufferHandleList.back(),
-      queueHandle,
-      false);
+      i);
   }
+
+  createTLAS(topLevelAccelerationStructureHandle,
+    bottomLevelAccelerationStructureInstance,
+    queueFamilyIndex,
+    memoryAllocateFlagsInfo,
+    topLevelAccelerationStructureBufferHandle,
+    topLevelAccelerationStructureDeviceMemoryHandle,
+    commandBufferHandleList.back(),
+    queueHandle,
+    false);
     
   // =========================================================================
   // Build Top Level Acceleration Structure
@@ -1997,16 +1970,24 @@ int main() {
               VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR,
           .pNext = NULL,
           .accelerationStructureCount = 1,
-          .pAccelerationStructures = &topLevelAccelerationStructureHandle[0]};
+          .pAccelerationStructures = &topLevelAccelerationStructureHandle};
 
+  // Hardcoded as 2 objects
+  //TODO loop
   VkDescriptorBufferInfo uniformDescriptorInfo = {
       .buffer = uniformBufferHandle, .offset = 0, .range = VK_WHOLE_SIZE};
 
   VkDescriptorBufferInfo indexDescriptorInfo = {
-      .buffer = indexBufferHandle[0], .offset = 0, .range = VK_WHOLE_SIZE}; //TODO loop
+      .buffer = indexBufferHandle[0], .offset = 0, .range = VK_WHOLE_SIZE};
+
+    VkDescriptorBufferInfo indexDescriptorInfo2 = {
+      .buffer = indexBufferHandle[1], .offset = 0, .range = VK_WHOLE_SIZE};
 
   VkDescriptorBufferInfo vertexDescriptorInfo = {
-      .buffer = vertexBufferHandle[0], .offset = 0, .range = VK_WHOLE_SIZE}; //TODO loop
+      .buffer = vertexBufferHandle[0], .offset = 0, .range = VK_WHOLE_SIZE};
+
+    VkDescriptorBufferInfo vertexDescriptorInfo2 = {
+      .buffer = vertexBufferHandle[1], .offset = 0, .range = VK_WHOLE_SIZE}; 
 
   VkDescriptorImageInfo rayTraceImageDescriptorInfo = {
       .sampler = VK_NULL_HANDLE,
@@ -2063,111 +2044,30 @@ int main() {
        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
        .pImageInfo = &rayTraceImageDescriptorInfo,
        .pBufferInfo = NULL,
+       .pTexelBufferView = NULL},
+      {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+       .pNext = NULL,
+       .dstSet = descriptorSetHandleList[0],
+       .dstBinding = 5,
+       .dstArrayElement = 0,
+       .descriptorCount = 1,
+       .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+       .pImageInfo = NULL,
+       .pBufferInfo = &indexDescriptorInfo2,
+       .pTexelBufferView = NULL},
+      {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+       .pNext = NULL,
+       .dstSet = descriptorSetHandleList[0],
+       .dstBinding = 6,
+       .dstArrayElement = 0,
+       .descriptorCount = 1,
+       .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+       .pImageInfo = NULL,
+       .pBufferInfo = &vertexDescriptorInfo2,
        .pTexelBufferView = NULL}};
 
   vkUpdateDescriptorSets(deviceHandle, writeDescriptorSetList.size(),
                          writeDescriptorSetList.data(), 0, NULL);
-
-  // =========================================================================
-  // Material Index Buffer
-
-  std::vector<std::vector<uint32_t>> materialIndexList(objectCount); //TODO loop
-
-  for(int i = 0; i < objectCount; i++){
-    for (tinyobj::shape_t shape : shapes[i]) {
-      for (int index : shape.mesh.material_ids) {
-        materialIndexList[i].push_back(index);
-      }
-    }
-  }
-
-  for(int i = 0; i < objectCount; i++){
-    
-  }
-
-  VkBuffer materialIndexBufferHandle = VK_NULL_HANDLE;
-  createBuffer(materialIndexBufferHandle,
-    sizeof(uint32_t) * materialIndexList[0].size(),
-    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-    queueFamilyIndex);
-
-  VkDeviceMemory materialIndexDeviceMemoryHandle = VK_NULL_HANDLE;
-  allocAndBind(materialIndexDeviceMemoryHandle,
-    &memoryAllocateFlagsInfo,
-    materialIndexBufferHandle,
-    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-  
-  copyData(materialIndexDeviceMemoryHandle,
-    (void *) materialIndexList[0].data(),
-    sizeof(uint32_t) * materialIndexList[0].size());
-
-  // =========================================================================
-  // Material Buffer
-
-  struct Material {
-    float ambient[4] = {0, 0, 0, 0};
-    float diffuse[4] = {0, 0, 0, 0};
-    float specular[4] = {0, 0, 0, 0};
-    float emission[4] = {0, 0, 0, 0};
-  };
-
-  std::vector<Material> materialList(materials[0].size());
-  for (uint32_t x = 0; x < materials[0].size(); x++) { //TODO loop
-    memcpy(materialList[x].ambient, materials[0][x].ambient, sizeof(float) * 3);
-    memcpy(materialList[x].diffuse, materials[0][x].diffuse, sizeof(float) * 3);
-    memcpy(materialList[x].specular, materials[0][x].specular, sizeof(float) * 3);
-    memcpy(materialList[x].emission, materials[0][x].emission, sizeof(float) * 3);
-  }
-
-  VkBuffer materialBufferHandle = VK_NULL_HANDLE;
-  createBuffer(materialBufferHandle,
-    sizeof(Material) * materialList.size(),
-    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-    queueFamilyIndex);
-
-  VkDeviceMemory materialDeviceMemoryHandle = VK_NULL_HANDLE;
-  allocAndBind(materialDeviceMemoryHandle,
-    &memoryAllocateFlagsInfo,
-    materialBufferHandle,
-    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-  
-  copyData(materialDeviceMemoryHandle,
-    (void *)  materialList.data(),
-    sizeof(Material) * materialList.size());
-
-  // =========================================================================
-  // Update Material Descriptor Set
-
-  VkDescriptorBufferInfo materialIndexDescriptorInfo = {
-      .buffer = materialIndexBufferHandle, .offset = 0, .range = VK_WHOLE_SIZE};
-
-  VkDescriptorBufferInfo materialDescriptorInfo = {
-      .buffer = materialBufferHandle, .offset = 0, .range = VK_WHOLE_SIZE};
-
-  std::vector<VkWriteDescriptorSet> materialWriteDescriptorSetList = {
-      {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-       .pNext = NULL,
-       .dstSet = descriptorSetHandleList[1],
-       .dstBinding = 0,
-       .dstArrayElement = 0,
-       .descriptorCount = 1,
-       .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-       .pImageInfo = NULL,
-       .pBufferInfo = &materialIndexDescriptorInfo,
-       .pTexelBufferView = NULL},
-      {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-       .pNext = NULL,
-       .dstSet = descriptorSetHandleList[1],
-       .dstBinding = 1,
-       .dstArrayElement = 0,
-       .descriptorCount = 1,
-       .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-       .pImageInfo = NULL,
-       .pBufferInfo = &materialDescriptorInfo,
-       .pTexelBufferView = NULL}};
-
-  vkUpdateDescriptorSets(deviceHandle, materialWriteDescriptorSetList.size(),
-                         materialWriteDescriptorSetList.data(), 0, NULL);
 
   // =========================================================================
   // Shader Binding Table
@@ -2620,10 +2520,6 @@ int main() {
   vkFreeMemory(deviceHandle, shaderBindingTableDeviceMemoryHandle, NULL);
   vkDestroyBuffer(deviceHandle, shaderBindingTableBufferHandle, NULL);
 
-  vkFreeMemory(deviceHandle, materialDeviceMemoryHandle, NULL);
-  vkDestroyBuffer(deviceHandle, materialBufferHandle, NULL);
-  vkFreeMemory(deviceHandle, materialIndexDeviceMemoryHandle, NULL);
-  vkDestroyBuffer(deviceHandle, materialIndexBufferHandle, NULL);
   vkDestroyFence(deviceHandle,
                  rayTraceImageBarrierAccelerationStructureBuildFenceHandle,
                  NULL);
@@ -2634,19 +2530,16 @@ int main() {
   vkFreeMemory(deviceHandle, uniformDeviceMemoryHandle, NULL);
   vkDestroyBuffer(deviceHandle, uniformBufferHandle, NULL);
 
-  for(int i = 0; i < objectCount; i++){
-    pvkDestroyAccelerationStructureKHR(deviceHandle,
-                                    topLevelAccelerationStructureHandle[i], NULL);
 
-    vkFreeMemory(deviceHandle, topLevelAccelerationStructureDeviceMemoryHandle[i],
-                NULL);
+  pvkDestroyAccelerationStructureKHR(deviceHandle,
+                                  topLevelAccelerationStructureHandle, NULL);
 
-    vkDestroyBuffer(deviceHandle, topLevelAccelerationStructureBufferHandle[i],
-                    NULL);
-  }
+  vkFreeMemory(deviceHandle, topLevelAccelerationStructureDeviceMemoryHandle,
+              NULL);
 
-  vkDestroyFence(deviceHandle, bottomLevelAccelerationStructureBuildFenceHandle,
-                 NULL);
+  vkDestroyBuffer(deviceHandle, topLevelAccelerationStructureBufferHandle,
+                  NULL);
+
 
   for(int i = 0; i < objectCount; i++){
 
@@ -2677,8 +2570,6 @@ int main() {
   vkDestroyShaderModule(deviceHandle, rayGenerateShaderModuleHandle, NULL);
   vkDestroyShaderModule(deviceHandle, rayClosestHitShaderModuleHandle, NULL);
   vkDestroyPipelineLayout(deviceHandle, pipelineLayoutHandle, NULL);
-  vkDestroyDescriptorSetLayout(deviceHandle, materialDescriptorSetLayoutHandle,
-                               NULL);
 
   vkDestroyDescriptorSetLayout(deviceHandle, descriptorSetLayoutHandle, NULL);
   vkDestroyDescriptorPool(deviceHandle, descriptorPoolHandle, NULL);

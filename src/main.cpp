@@ -176,6 +176,30 @@ void copyData(VkDevice& deviceHandle,
 
   vkUnmapMemory(deviceHandle, deviceMemoryHandle);
 }
+
+void createBuffer(VkBuffer& bufferHandle,
+  VkDeviceSize bufferSize,
+  VkBufferUsageFlags usageFlags,
+  uint32_t queueFamilyIndex)
+{
+  VkBufferCreateInfo bufferCreateInfo = {
+    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+    .pNext = NULL,
+    .flags = 0,
+    .size = bufferSize,
+    .usage = usageFlags,
+    .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    .queueFamilyIndexCount = 1,
+    .pQueueFamilyIndices = &queueFamilyIndex};
+
+  bufferHandle = VK_NULL_HANDLE;
+  VkResult result = vkCreateBuffer(deviceHandle, &bufferCreateInfo, NULL,
+                          &bufferHandle);
+
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkCreateBuffer");
+  }
+}
 //*****************************************************
 
 void createVertexBuffer(VkBuffer& vertexBufferHandle, 
@@ -188,27 +212,13 @@ void createVertexBuffer(VkBuffer& vertexBufferHandle,
   VkDeviceMemory& vertexDeviceMemoryHandle,
   VkDeviceAddress& vertexBufferDeviceAddress)
 {
-
-   VkBufferCreateInfo vertexBufferCreateInfo = {
-      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-      .pNext = NULL,
-      .flags = 0,
-      .size = sizeof(float) * attrib.vertices.size() * 3,
-      .usage =
-          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-          VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
-          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-      .queueFamilyIndexCount = 1,
-      .pQueueFamilyIndices = &queueFamilyIndex};
-
   vertexBufferHandle = VK_NULL_HANDLE;
-  VkResult result = vkCreateBuffer(deviceHandle, &vertexBufferCreateInfo, NULL,
-                          &vertexBufferHandle);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkCreateBuffer");
-  }
+  createBuffer(vertexBufferHandle,
+    sizeof(float) * attrib.vertices.size() * 3,
+      VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+      VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+    queueFamilyIndex);
 
   allocAndBind(vertexDeviceMemoryHandle,
     &memoryAllocateFlagsInfo,
@@ -241,28 +251,13 @@ void createIndexBuffer(VkBuffer& indexBufferHandle,
   VkDeviceMemory& indexDeviceMemoryHandle,
   VkDeviceAddress& indexBufferDeviceAddress)
 {
-
-  VkBufferCreateInfo indexBufferCreateInfo = {
-      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-      .pNext = NULL,
-      .flags = 0,
-      .size = sizeof(uint32_t) * indexList.size(),
-      .usage =
-          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-          VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
-          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-      .queueFamilyIndexCount = 1,
-      .pQueueFamilyIndices = &queueFamilyIndex};
-
-  indexBufferHandle = VK_NULL_HANDLE;
-  VkResult result = vkCreateBuffer(deviceHandle, &indexBufferCreateInfo, NULL,
-                          &indexBufferHandle);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkCreateBuffer");
-  }
-
+  createBuffer(indexBufferHandle,
+    sizeof(uint32_t) * indexList.size(),
+      VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+      VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+    queueFamilyIndex);
+  
   allocAndBind(indexDeviceMemoryHandle,
     &memoryAllocateFlagsInfo,
     physicalDeviceMemoryProperties,
@@ -326,6 +321,7 @@ void createBLAS(VkAccelerationStructureKHR& bottomLevelAccelerationStructureHand
   VkAccelerationStructureBuildGeometryInfoKHR& bottomLevelAccelerationStructureBuildGeometryInfo
   )
 {
+  VkResult result;
   
   bottomLevelAccelerationStructureBuildGeometryInfo = {
     .sType =
@@ -359,25 +355,11 @@ void createBLAS(VkAccelerationStructureKHR& bottomLevelAccelerationStructureHand
       &bottomLevelAccelerationStructureBuildSizesInfo);
 
   //Create buffer
-  VkBufferCreateInfo bottomLevelAccelerationStructureBufferCreateInfo = {
-    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-    .pNext = NULL,
-    .flags = 0,
-    .size = bottomLevelAccelerationStructureBuildSizesInfo
-                .accelerationStructureSize,
-    .usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR,
-    .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-    .queueFamilyIndexCount = 1,
-    .pQueueFamilyIndices = &queueFamilyIndex};
-
   bottomLevelAccelerationStructureBufferHandle = VK_NULL_HANDLE;
-  VkResult result = vkCreateBuffer(deviceHandle,
-                          &bottomLevelAccelerationStructureBufferCreateInfo,
-                          NULL, &bottomLevelAccelerationStructureBufferHandle);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkCreateBuffer");
-  }
+  createBuffer(bottomLevelAccelerationStructureBufferHandle,
+    bottomLevelAccelerationStructureBuildSizesInfo.accelerationStructureSize,
+    VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR,
+    queueFamilyIndex);
 
   allocAndBind(bottomLevelAccelerationStructureDeviceMemoryHandle,
     NULL,
@@ -433,26 +415,13 @@ void createBLASScratchBuffer(VkBuffer& bottomLevelAccelerationStructureScratchBu
   bottomLevelAccelerationStructureDeviceAddress =
       pvkGetAccelerationStructureDeviceAddressKHR(
           deviceHandle, &bottomLevelAccelerationStructureDeviceAddressInfo);
-  
-  VkBufferCreateInfo bottomLevelAccelerationStructureScratchBufferCreateInfo = {
-    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-    .pNext = NULL,
-    .flags = 0,
-    .size = bottomLevelAccelerationStructureBuildSizesInfo.buildScratchSize,
-    .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-              VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-    .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-    .queueFamilyIndexCount = 1,
-    .pQueueFamilyIndices = &queueFamilyIndex};
 
   bottomLevelAccelerationStructureScratchBufferHandle = VK_NULL_HANDLE;
-  VkResult result = vkCreateBuffer(
-      deviceHandle, &bottomLevelAccelerationStructureScratchBufferCreateInfo,
-      NULL, &bottomLevelAccelerationStructureScratchBufferHandle);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkCreateBuffer");
-  }
+  createBuffer(bottomLevelAccelerationStructureScratchBufferHandle,
+    bottomLevelAccelerationStructureBuildSizesInfo.buildScratchSize,
+      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+      VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+    queueFamilyIndex);
 
   allocAndBind(bottomLevelAccelerationStructureDeviceScratchMemoryHandle,
     &memoryAllocateFlagsInfo,
@@ -558,6 +527,7 @@ void createTLAS(VkAccelerationStructureKHR& topLevelAccelerationStructureHandle,
   VkQueue& queueHandle,
   bool update)
 {
+  VkResult result;
 
   VkAccelerationStructureInstanceKHR bottomLevelAccelerationStructureInstance =
   {.transform = transformMatrix,
@@ -569,26 +539,12 @@ void createTLAS(VkAccelerationStructureKHR& topLevelAccelerationStructureHandle,
         bottomLevelAccelerationStructureDeviceAddress};
 
   // create buffer for each tla (NV createsone buffer)
-  VkBufferCreateInfo bottomLevelGeometryInstanceBufferCreateInfo = {
-      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-      .pNext = NULL,
-      .flags = 0,
-      .size = sizeof(VkAccelerationStructureInstanceKHR),
-      .usage =
-          VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
-          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-      .queueFamilyIndexCount = 1,
-      .pQueueFamilyIndices = &queueFamilyIndex};
-
   VkBuffer bottomLevelGeometryInstanceBufferHandle = VK_NULL_HANDLE;
-  VkResult result =
-      vkCreateBuffer(deviceHandle, &bottomLevelGeometryInstanceBufferCreateInfo,
-                     NULL, &bottomLevelGeometryInstanceBufferHandle);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkCreateBuffer");
-  }
+  createBuffer(bottomLevelGeometryInstanceBufferHandle,
+    sizeof(VkAccelerationStructureInstanceKHR),
+      VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+      VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+    queueFamilyIndex);
 
   VkDeviceMemory bottomLevelGeometryInstanceDeviceMemoryHandle = VK_NULL_HANDLE;
 
@@ -664,28 +620,13 @@ void createTLAS(VkAccelerationStructureKHR& topLevelAccelerationStructureHandle,
       &topLevelAccelerationStructureBuildSizesInfo);
   
   if(update == false){
-    VkBufferCreateInfo topLevelAccelerationStructureBufferCreateInfo = {
-    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-    .pNext = NULL,
-    .flags = 0,
-    .size =
-        topLevelAccelerationStructureBuildSizesInfo.accelerationStructureSize,
-    .usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR, //TODO  | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT ??
-    .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-    .queueFamilyIndexCount = 1,
-    .pQueueFamilyIndices = &queueFamilyIndex};
-
     topLevelAccelerationStructureBufferHandle = VK_NULL_HANDLE;
-    result = vkCreateBuffer(deviceHandle,
-                            &topLevelAccelerationStructureBufferCreateInfo, NULL,
-                            &topLevelAccelerationStructureBufferHandle);
-
-    if (result != VK_SUCCESS) {
-      throwExceptionVulkanAPI(result, "vkCreateBuffer");
-    }
+    createBuffer(topLevelAccelerationStructureBufferHandle,
+      topLevelAccelerationStructureBuildSizesInfo.accelerationStructureSize,
+      VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR, //TODO  | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT ??
+      queueFamilyIndex);
 
     topLevelAccelerationStructureDeviceMemoryHandle = VK_NULL_HANDLE;
-
     allocAndBind(topLevelAccelerationStructureDeviceMemoryHandle,
       NULL,
       physicalDeviceMemoryProperties,
@@ -718,37 +659,23 @@ void createTLAS(VkAccelerationStructureKHR& topLevelAccelerationStructureHandle,
   
   //----------------------build----------------------
 
-   VkAccelerationStructureDeviceAddressInfoKHR
-      topLevelAccelerationStructureDeviceAddressInfo = {
-          .sType =
-              VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR,
-          .pNext = NULL,
-          .accelerationStructure = topLevelAccelerationStructureHandle};
+  VkAccelerationStructureDeviceAddressInfoKHR
+    topLevelAccelerationStructureDeviceAddressInfo = {
+        .sType =
+            VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR,
+        .pNext = NULL,
+        .accelerationStructure = topLevelAccelerationStructureHandle};
   
   VkDeviceAddress topLevelAccelerationStructureDeviceAddress =
       pvkGetAccelerationStructureDeviceAddressKHR(
           deviceHandle, &topLevelAccelerationStructureDeviceAddressInfo);
-
-  VkBufferCreateInfo topLevelAccelerationStructureScratchBufferCreateInfo = {
-      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-      .pNext = NULL,
-      .flags = 0,
-      .size = topLevelAccelerationStructureBuildSizesInfo.buildScratchSize,
-      .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-      .queueFamilyIndexCount = 1,
-      .pQueueFamilyIndices = &queueFamilyIndex};
-
+  
   VkBuffer topLevelAccelerationStructureScratchBufferHandle = VK_NULL_HANDLE;
-  result = vkCreateBuffer(
-      deviceHandle, &topLevelAccelerationStructureScratchBufferCreateInfo, NULL,
-      &topLevelAccelerationStructureScratchBufferHandle);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkCreateBuffer");
-  }
-
+  createBuffer(topLevelAccelerationStructureScratchBufferHandle,
+    topLevelAccelerationStructureBuildSizesInfo.buildScratchSize,
+      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+      VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+    queueFamilyIndex);
 
   VkDeviceMemory topLevelAccelerationStructureDeviceScratchMemoryHandle =
     VK_NULL_HANDLE;
@@ -1917,23 +1844,11 @@ int main() {
     uint32_t frameCount = 0;
   } uniformStructure;
 
-  VkBufferCreateInfo uniformBufferCreateInfo = {
-      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-      .pNext = NULL,
-      .flags = 0,
-      .size = sizeof(UniformStructure),
-      .usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-      .queueFamilyIndexCount = 1,
-      .pQueueFamilyIndices = &queueFamilyIndex};
-
   VkBuffer uniformBufferHandle = VK_NULL_HANDLE;
-  result = vkCreateBuffer(deviceHandle, &uniformBufferCreateInfo, NULL,
-                          &uniformBufferHandle);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkCreateBuffer");
-  }
+  createBuffer(uniformBufferHandle,
+    sizeof(UniformStructure),
+    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+    queueFamilyIndex);
 
   VkDeviceMemory uniformDeviceMemoryHandle = VK_NULL_HANDLE;
   allocAndBind(uniformDeviceMemoryHandle,
@@ -2202,30 +2117,21 @@ int main() {
   // =========================================================================
   // Material Index Buffer
 
-  std::vector<uint32_t> materialIndexList; //TODO loop
-  for (tinyobj::shape_t shape : shapes[0]) {
-    for (int index : shape.mesh.material_ids) {
-      materialIndexList.push_back(index);
+  std::vector<std::vector<uint32_t>> materialIndexList(objectCount); //TODO loop
+
+  for(int i = 0; i < objectCount; i++){
+    for (tinyobj::shape_t shape : shapes[i]) {
+      for (int index : shape.mesh.material_ids) {
+        materialIndexList[i].push_back(index);
+      }
     }
   }
 
-  VkBufferCreateInfo materialIndexBufferCreateInfo = {
-      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-      .pNext = NULL,
-      .flags = 0,
-      .size = sizeof(uint32_t) * materialIndexList.size(),
-      .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-      .queueFamilyIndexCount = 1,
-      .pQueueFamilyIndices = &queueFamilyIndex};
-
   VkBuffer materialIndexBufferHandle = VK_NULL_HANDLE;
-  result = vkCreateBuffer(deviceHandle, &materialIndexBufferCreateInfo, NULL,
-                          &materialIndexBufferHandle);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkCreateBuffer");
-  }
+  createBuffer(materialIndexBufferHandle,
+    sizeof(uint32_t) * materialIndexList[0].size(),
+    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+    queueFamilyIndex);
 
   VkDeviceMemory materialIndexDeviceMemoryHandle = VK_NULL_HANDLE;
   allocAndBind(materialIndexDeviceMemoryHandle,
@@ -2237,8 +2143,8 @@ int main() {
   
   copyData(deviceHandle,
     materialIndexDeviceMemoryHandle,
-    (void *) materialIndexList.data(),
-    sizeof(uint32_t) * materialIndexList.size());
+    (void *) materialIndexList[0].data(),
+    sizeof(uint32_t) * materialIndexList[0].size());
 
   // =========================================================================
   // Material Buffer
@@ -2258,23 +2164,11 @@ int main() {
     memcpy(materialList[x].emission, materials[0][x].emission, sizeof(float) * 3);
   }
 
-  VkBufferCreateInfo materialBufferCreateInfo = {
-      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-      .pNext = NULL,
-      .flags = 0,
-      .size = sizeof(Material) * materialList.size(),
-      .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-      .queueFamilyIndexCount = 1,
-      .pQueueFamilyIndices = &queueFamilyIndex};
-
   VkBuffer materialBufferHandle = VK_NULL_HANDLE;
-  result = vkCreateBuffer(deviceHandle, &materialBufferCreateInfo, NULL,
-                          &materialBufferHandle);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkCreateBuffer");
-  }
+  createBuffer(materialBufferHandle,
+    sizeof(Material) * materialList.size(),
+    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+    queueFamilyIndex);
 
   VkDeviceMemory materialDeviceMemoryHandle = VK_NULL_HANDLE;
   allocAndBind(materialDeviceMemoryHandle,
@@ -2329,24 +2223,12 @@ int main() {
   VkDeviceSize shaderBindingTableSize =
       physicalDeviceRayTracingPipelineProperties.shaderGroupHandleSize * 4;
 
-  VkBufferCreateInfo shaderBindingTableBufferCreateInfo = {
-      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-      .pNext = NULL,
-      .flags = 0,
-      .size = shaderBindingTableSize,
-      .usage = VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR |
-               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-      .queueFamilyIndexCount = 1,
-      .pQueueFamilyIndices = &queueFamilyIndex};
-
   VkBuffer shaderBindingTableBufferHandle = VK_NULL_HANDLE;
-  result = vkCreateBuffer(deviceHandle, &shaderBindingTableBufferCreateInfo,
-                          NULL, &shaderBindingTableBufferHandle);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkCreateBuffer");
-  }
+  createBuffer(shaderBindingTableBufferHandle,
+    shaderBindingTableSize,
+      VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR |
+      VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+    queueFamilyIndex);
 
   VkDeviceMemory shaderBindingTableDeviceMemoryHandle = VK_NULL_HANDLE;
   allocAndBind(shaderBindingTableDeviceMemoryHandle,
@@ -2813,8 +2695,6 @@ int main() {
     vkDestroyBuffer(deviceHandle, topLevelAccelerationStructureBufferHandle[i],
                     NULL);
   }
-
-
 
   vkDestroyFence(deviceHandle, bottomLevelAccelerationStructureBuildFenceHandle,
                  NULL);

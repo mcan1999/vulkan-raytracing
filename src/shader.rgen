@@ -51,7 +51,7 @@ layout(binding = 4, set = 0, rgba32f) uniform image2D image;
 const float index_of_refraction = 1.52f;
 const vec3 Iamb = vec3(0.8, 0.8, 0.8); // ambient light intensity
 const vec3 kd = vec3(0.2, 1, 0.2);     // diffuse reflectance coefficient
-const vec3 ka = vec3(0.3, 0.3, 0.3);   // ambient reflectance coefficient
+const vec3 ka = vec3(0.1, 0.3, 0.1);   // ambient reflectance coefficient
 const vec3 ks = vec3(0.8, 0.8, 0.8);   // specular reflectance coefficient
 
 // TODO: Check the properties of the random function

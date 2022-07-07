@@ -4,67 +4,162 @@
 #define M_PI 3.1415926535897932384626433832795
 
 layout(location = 0) rayPayloadEXT Payload {
-  vec3 rayOrigin;
-  vec3 rayDirection;
-  vec3 previousNormal;
-
-  vec3 directColor;
-  vec3 indirectColor;
-  int rayDepth;
-
-  int rayActive;
+  vec3 hitPosition;
+  vec3 hitNormal;
+  
+  // TODO: Set object index in BLAS
+  /*
+    Object index:
+    0 - center mesh
+    1 - orbiting mesh
+   */
+  int objectIndex;
 }
 payload;
 
+layout(location = 1) rayPayloadEXT bool isShadow;
+
 layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
-layout(binding = 1, set = 0) uniform Camera {
+layout(binding = 1, set = 0) uniform UniformStructure {
   vec4 position;
   vec4 right;
   vec4 up;
   vec4 forward;
 
+  vec3 lightPosition;
+  float lightIntensity;
+
   uint frameCount;
+
+  uint maxBounceCount;
+  uint samplesPerPixel;
+
+  /*
+    Object types:
+    0 - diffuse
+    1 - mirror
+    2 - refractive
+    3 - transparent
+    */
+  uint centerObjectType;
+  uint orbitingObjectType;
 }
-camera;
+uniforms;
 
 layout(binding = 4, set = 0, rgba32f) uniform image2D image;
 
+const float index_of_refraction = 1.52f;
+const vec3 Iamb = vec3(0.8, 0.8, 0.8); // ambient light intensity
+const vec3 kd = vec3(0.2, 1, 0.2);     // diffuse reflectance coefficient
+const vec3 ka = vec3(0.3, 0.3, 0.3);   // ambient reflectance coefficient
+const vec3 ks = vec3(0.8, 0.8, 0.8);   // specular reflectance coefficient
+
+// TODO: Check the properties of the random function
 float random(vec2 uv, float seed) {
-  return fract(sin(mod(dot(uv, vec2(12.9898, 78.233)) + 1113.1 * seed, M_PI)) *
-               43758.5453);
-  ;
+  return fract(sin(dot(uv, vec2(12.9898, 78.233)) + 1113.1 * seed) * 43758.5453);
 }
 
 void main() {
-  vec2 uv = gl_LaunchIDEXT.xy +
-            vec2(random(gl_LaunchIDEXT.xy, 0), random(gl_LaunchIDEXT.xy, 1));
-  uv /= vec2(gl_LaunchSizeEXT.xy);
-  uv = (uv * 2.0f - 1.0f) * vec2(1.0f, -1.0f);
+  uint samples = uniforms.samplesPerPixel;
+  uint frameCount = uniforms.frameCount;
 
-  payload.rayOrigin = camera.position.xyz;
-  payload.rayDirection =
-      normalize(uv.x * camera.right + uv.y * camera.up + camera.forward).xyz;
-  payload.previousNormal = vec3(0.0, 0.0, 0.0);
+  vec4 color = vec4(0.0f, 0.0f, 0.0f, 0.0f);
 
-  payload.directColor = vec3(0.0, 0.0, 0.0);
-  payload.indirectColor = vec3(0.0, 0.0, 0.0);
-  payload.rayDepth = 0;
+  const uint normalRayFlags = gl_RayFlagsOpaqueEXT;
+  const uint shadowRayFlags = gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT;
 
-  payload.rayActive = 1;
+  uint seedOffset = samples * frameCount;
+  for (int i = 0; i < samples; i++) 
+  {
+    vec2 uv = gl_LaunchIDEXT.xy +
+              vec2(random(gl_LaunchIDEXT.xy, seedOffset + i), random(gl_LaunchIDEXT.xy, seedOffset + i + 0.5));
+    uv /= vec2(gl_LaunchSizeEXT.xy);
+    uv = (uv * 2.0f - 1.0f) * vec2(1.0f, -1.0f);
 
-  for (int x = 0; x < 16; x++) {
-    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0,
-                payload.rayOrigin, 0.001, payload.rayDirection, 10000.0, 0);
+    payload.objectIndex = -1;
+    vec3 rayOrigin = uniforms.position.xyz;
+    vec3 rayDirection = normalize(uv.x * uniforms.right + uv.y * uniforms.up + uniforms.forward).xyz;
+
+    vec3 tmpColor = Iamb * ka;
+
+    uint maxBounceCount = uniforms.maxBounceCount;
+    for (int j = 0; j <= maxBounceCount; j++) 
+    {
+      traceRayEXT(topLevelAS, normalRayFlags, 0xFF, 0, 0, 0,
+                  rayOrigin, 0.001, rayDirection, 10000.0, 0);
+
+      int objectIndex = payload.objectIndex;
+      if (objectIndex == -1)
+      {
+        // TODO: Sample skybox
+        tmpColor = vec3(0.0f, 0.0f, 0.0f);
+        break;
+      }
+
+      uint objectType = objectIndex == 0 ? uniforms.centerObjectType : uniforms.orbitingObjectType;
+      if (objectType == 0)
+      {
+        isShadow = true;
+
+        vec3 hitPosition = payload.hitPosition;
+        vec3 hitNormal = payload.hitNormal;
+
+        if (dot(rayDirection, hitNormal) >= 0)
+          break;
+
+        vec3 shadowRayOrigin = hitPosition + 0.01 * hitNormal;
+        vec3 toLightVector = uniforms.lightPosition - hitPosition;
+        float lightDistance = length(toLightVector);
+        vec3 L = normalize(toLightVector);
+        traceRayEXT(topLevelAS, shadowRayFlags, 0xFF, 0, 0, 1,
+                    shadowRayOrigin, 0.001, L, lightDistance, 1);
+
+        if (!isShadow)
+        {
+          vec3 V = -rayDirection;
+          vec3 H = normalize(L + V);
+          vec3 N = payload.hitNormal;
+
+          float NdotL = dot(N, L); // for diffuse component
+          float NdotH = dot(N, H); // for specular component
+
+          vec3 diffuseColor = uniforms.lightIntensity * kd * max(0, NdotL);
+          vec3 specularColor = uniforms.lightIntensity * ks * pow(max(0, NdotH), 100);
+
+          tmpColor += pow(0.9, float(i)) * (diffuseColor + specularColor);
+        }
+        break;
+      }
+      else if (objectType == 1)
+      {
+        payload.objectIndex = -1;
+        vec3 hitNormal = payload.hitNormal;
+        rayOrigin = payload.hitPosition + 0.01 * payload.hitNormal;
+        rayDirection = reflect(rayDirection, hitNormal);
+      }
+      else if (objectType == 2)
+      {
+        payload.objectIndex = -1;
+        vec3 hitNormal = payload.hitNormal;
+        rayOrigin = payload.hitPosition + 0.01 * payload.hitNormal;
+
+        float ratio = dot(rayDirection, hitNormal) > 0.0f ? index_of_refraction : 1.0f/index_of_refraction;
+        rayDirection = refract(rayDirection, hitNormal, ratio);
+      }
+      // TODO: Transparent objects
+    }
+    
+    color += vec4(tmpColor, 1);
   }
 
-  vec4 color = vec4(payload.directColor + payload.indirectColor, 1.0);
+  color /= samples;
 
-  if (camera.frameCount > 0) {
+  if (frameCount > 0) {
     vec4 previousColor = imageLoad(image, ivec2(gl_LaunchIDEXT.xy));
-    previousColor *= camera.frameCount;
+    previousColor *= frameCount;
 
     color += previousColor;
-    color /= (camera.frameCount + 1);
+    color /= (frameCount + 1);
   }
 
   imageStore(image, ivec2(gl_LaunchIDEXT.xy), color);

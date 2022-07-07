@@ -244,7 +244,7 @@ void createBLASGeometry(VkAccelerationStructureGeometryKHR& bottomLevelAccelerat
               .pNext = NULL,
               .vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
               .vertexData = {.deviceAddress = vertexBufferDeviceAddress},
-              .vertexStride = sizeof(float) * 3,
+              .vertexStride = sizeof(float) * 6,
               .maxVertex = (uint32_t)attrib.vertices.size(),
               .indexType = VK_INDEX_TYPE_UINT32,
               .indexData = {.deviceAddress = indexBufferDeviceAddress},
@@ -867,7 +867,7 @@ int main() {
   vkGetPhysicalDeviceMemoryProperties(activePhysicalDeviceHandle,
                                       &physicalDeviceMemoryProperties);
 
-  std::cout << "DEVICE: " << physicalDeviceProperties2.properties.deviceName << std::endl;
+  std::cout << physicalDeviceProperties2.properties.deviceName << std::endl;
 
   // =========================================================================
   // Physical Device Features
@@ -1224,14 +1224,12 @@ int main() {
       {.binding = 0,
        .descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
        .descriptorCount = 1,
-       .stageFlags =
-           VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
+       .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR,
        .pImmutableSamplers = NULL},
       {.binding = 1,
        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
        .descriptorCount = 1,
-       .stageFlags =
-           VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
+       .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR,
        .pImmutableSamplers = NULL},
       {.binding = 2,
        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -1606,10 +1604,28 @@ int main() {
   std::vector<VkDeviceAddress> vertexBufferDeviceAddress(objectCount);
   
   for(int i = 0; i < objectCount; i++){
+    auto vertices = attrib[i].vertices;
+    auto normals = attrib[i].normals;
+
+    size_t vertexCount = vertices.size();
+    size_t vertexBufferSize = sizeof(tinyobj::real_t) * 2 * vertexCount;
+    std::vector<tinyobj::real_t> tmpBuffer(2 * vertexCount);
+
+    for (size_t i = 0; i < vertexCount; i += 3)
+    {
+      size_t offset = 2 * i, attribOffset = i;
+      tmpBuffer[offset] = vertices[attribOffset];
+      tmpBuffer[offset + 1] = vertices[attribOffset + 1];
+      tmpBuffer[offset + 2] = vertices[attribOffset + 2];
+      tmpBuffer[offset + 3] = normals[attribOffset];
+      tmpBuffer[offset + 4] = normals[attribOffset + 1];
+      tmpBuffer[offset + 5] = normals[attribOffset + 2];
+    }
+
     buildBuffer(vertexBufferHandle[i],
-      sizeof(float) * attrib[i].vertices.size() * 3,
+      vertexBufferSize,
       queueFamilyIndex,
-      (void *) attrib[i].vertices.data(),
+      (void *) tmpBuffer.data(),
         VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
         VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -1767,7 +1783,23 @@ int main() {
     float cameraUp[4] = {0, 1, 0, 1};
     float cameraForward[4] = {0, 0, 1, 1};
 
+    float lightPosition[3] = {5, 5, 5};
+    float lightIntensity = 1.0f;
+
     uint32_t frameCount = 0;
+
+    uint32_t maxBounceCount = 127;
+    uint32_t samplesPerPixel = 4;
+
+    /*
+      Object types:
+      0 - diffuse
+      1 - mirror
+      2 - refractive
+      3 - transparent
+     */
+    uint32_t centerObjectType = 1;
+    uint32_t orbitingObjectType = 0;
   } uniformStructure;
 
   VkBuffer uniformBufferHandle = VK_NULL_HANDLE;

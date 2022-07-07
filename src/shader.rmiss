@@ -2,16 +2,10 @@
 #extension GL_EXT_ray_tracing : require
 
 layout(location = 0) rayPayloadInEXT Payload {
-  vec3 rayOrigin;
-  vec3 rayDirection;
-  vec3 previousNormal;
-
-  vec3 directColor;
-  vec3 indirectColor;
-  int rayDepth;
-
-  int rayActive;
+  vec3 hitPosition;
+  vec3 hitNormal;
+  int objectIndex;
 }
 payload;
 
-void main() { payload.rayActive = 0; }
+void main() { payload.objectIndex = -1; }

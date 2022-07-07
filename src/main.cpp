@@ -926,11 +926,12 @@ int main() {
   // =========================================================================
   // Vertex Buffer
 
+  size_t vertexBufferSize = sizeof(tinyobj::real_t) * (attrib.vertices.size() + attrib.normals.size());
   VkBufferCreateInfo vertexBufferCreateInfo = {
       .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
       .pNext = NULL,
       .flags = 0,
-      .size = sizeof(float) * attrib.vertices.size() * 3,
+      .size = vertexBufferSize,
       .usage =
           VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
           VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
@@ -985,14 +986,24 @@ int main() {
 
   void *hostVertexMemoryBuffer;
   result = vkMapMemory(deviceHandle, vertexDeviceMemoryHandle, 0,
-                       sizeof(float) * attrib.vertices.size() * 3, 0,
+                       vertexBufferSize, 0,
                        &hostVertexMemoryBuffer);
-
-  memcpy(hostVertexMemoryBuffer, attrib.vertices.data(),
-         sizeof(float) * attrib.vertices.size() * 3);
 
   if (result != VK_SUCCESS) {
     throwExceptionVulkanAPI(result, "vkMapMemory");
+  }
+
+  tinyobj::real_t *hostVertexMemoryArray = static_cast<tinyobj::real_t *>(hostVertexMemoryBuffer);
+  size_t vertexCount = attrib.vertices.size();
+  for (size_t i = 0; i < vertexCount; i++)
+  {
+    size_t offset = 6 * i, attribOffset = 3 * i;
+    hostVertexMemoryArray[offset] = attrib.vertices[attribOffset];
+    hostVertexMemoryArray[offset + 1] = attrib.vertices[attribOffset + 1];
+    hostVertexMemoryArray[offset + 2] = attrib.vertices[attribOffset + 2];
+    hostVertexMemoryArray[offset + 3] = attrib.normals[attribOffset];
+    hostVertexMemoryArray[offset + 4] = attrib.normals[attribOffset + 1];
+    hostVertexMemoryArray[offset + 5] = attrib.normals[attribOffset + 2];
   }
 
   vkUnmapMemory(deviceHandle, vertexDeviceMemoryHandle);
@@ -1098,7 +1109,7 @@ int main() {
               .pNext = NULL,
               .vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
               .vertexData = {.deviceAddress = vertexBufferDeviceAddress},
-              .vertexStride = sizeof(float) * 3,
+              .vertexStride = sizeof(float) * 6,
               .maxVertex = (uint32_t)attrib.vertices.size(),
               .indexType = VK_INDEX_TYPE_UINT32,
               .indexData = {.deviceAddress = indexBufferDeviceAddress},

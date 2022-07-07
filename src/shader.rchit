@@ -30,20 +30,29 @@ void main() {
   vec3 barycentric = vec3(1.0 - hitCoordinate.x - hitCoordinate.y,
                           hitCoordinate.x, hitCoordinate.y);
 
-  vec3 vertexA = vec3(vertexBuffer.data[3 * indices.x + 0],
-                      vertexBuffer.data[3 * indices.x + 1],
-                      vertexBuffer.data[3 * indices.x + 2]);
-  vec3 vertexB = vec3(vertexBuffer.data[3 * indices.y + 0],
-                      vertexBuffer.data[3 * indices.y + 1],
-                      vertexBuffer.data[3 * indices.y + 2]);
-  vec3 vertexC = vec3(vertexBuffer.data[3 * indices.z + 0],
-                      vertexBuffer.data[3 * indices.z + 1],
-                      vertexBuffer.data[3 * indices.z + 2]);
+  vec3 vertexA = vec3(vertexBuffer.data[6 * indices.x + 0],
+                      vertexBuffer.data[6 * indices.x + 1],
+                      vertexBuffer.data[6 * indices.x + 2]);
+  vec3 normalA = vec3(vertexBuffer.data[6 * indices.x + 3],
+                      vertexBuffer.data[6 * indices.x + 4],
+                      vertexBuffer.data[6 * indices.x + 5]);
+  vec3 vertexB = vec3(vertexBuffer.data[6 * indices.y + 0],
+                      vertexBuffer.data[6 * indices.y + 1],
+                      vertexBuffer.data[6 * indices.y + 2]);
+  vec3 normalB = vec3(vertexBuffer.data[6 * indices.y + 3],
+                      vertexBuffer.data[6 * indices.y + 4],
+                      vertexBuffer.data[6 * indices.y + 5]);
+  vec3 vertexC = vec3(vertexBuffer.data[6 * indices.z + 0],
+                      vertexBuffer.data[6 * indices.z + 1],
+                      vertexBuffer.data[6 * indices.z + 2]);
+  vec3 normalC = vec3(vertexBuffer.data[6 * indices.z + 3],
+                      vertexBuffer.data[6 * indices.z + 4],
+                      vertexBuffer.data[6 * indices.z + 5]);
 
   vec3 position = vertexA * barycentric.x + vertexB * barycentric.y +
                   vertexC * barycentric.z;
-  // TODO: Get vertex normals from obj files
-  vec3 normal = normalize(cross(vertexB - vertexA, vertexC - vertexA));
+  vec3 normal = normalA * barycentric.x + normalB * barycentric.y +
+                normalC * barycentric.z;
 
   payload.hitPosition = position;
   payload.hitNormal = normal;

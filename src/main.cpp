@@ -1264,42 +1264,9 @@ int main() {
   }
 
   // =========================================================================
-  // Material Descriptor Set Layout
-
-  std::vector<VkDescriptorSetLayoutBinding>
-      materialDescriptorSetLayoutBindingList = {
-          {.binding = 0,
-           .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-           .descriptorCount = 1,
-           .stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
-           .pImmutableSamplers = NULL},
-          {.binding = 1,
-           .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-           .descriptorCount = 1,
-           .stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
-           .pImmutableSamplers = NULL}};
-
-  VkDescriptorSetLayoutCreateInfo materialDescriptorSetLayoutCreateInfo = {
-      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-      .pNext = NULL,
-      .flags = 0,
-      .bindingCount = (uint32_t)materialDescriptorSetLayoutBindingList.size(),
-      .pBindings = materialDescriptorSetLayoutBindingList.data()};
-
-  VkDescriptorSetLayout materialDescriptorSetLayoutHandle = VK_NULL_HANDLE;
-  result = vkCreateDescriptorSetLayout(
-      deviceHandle, &materialDescriptorSetLayoutCreateInfo, NULL,
-      &materialDescriptorSetLayoutHandle);
-
-  if (result != VK_SUCCESS) {
-    throwExceptionVulkanAPI(result, "vkCreateDescriptorSetLayout");
-  }
-
-  // =========================================================================
   // Allocate Descriptor Sets
 
-  std::vector<VkDescriptorSetLayout> descriptorSetLayoutHandleList = {
-      descriptorSetLayoutHandle, materialDescriptorSetLayoutHandle};
+  std::vector<VkDescriptorSetLayout> descriptorSetLayoutHandleList = {descriptorSetLayoutHandle};
 
   VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -1309,7 +1276,7 @@ int main() {
       .pSetLayouts = descriptorSetLayoutHandleList.data()};
 
   std::vector<VkDescriptorSet> descriptorSetHandleList =
-      std::vector<VkDescriptorSet>(2, VK_NULL_HANDLE);
+      std::vector<VkDescriptorSet>(1, VK_NULL_HANDLE);
 
   result = vkAllocateDescriptorSets(deviceHandle, &descriptorSetAllocateInfo,
                                     descriptorSetHandleList.data());
@@ -1553,8 +1520,6 @@ int main() {
 
   std::vector<tinyobj::attrib_t> attrib;
   std::vector<std::vector<tinyobj::shape_t>> shapes;
-  std::vector<std::vector<tinyobj::material_t>> materials;
-  
 
   std::vector<const char*> fileNames = {
     "resources/cube_scene.obj"
@@ -1569,14 +1534,10 @@ int main() {
 
     const std::vector<tinyobj::shape_t>& readShapes = reader.GetShapes();
     shapes.push_back(readShapes);
-     
-    const std::vector<tinyobj::material_t>& readMaterials = reader.GetMaterials();
-    materials.push_back(readMaterials);
   }
 
   assert(attrib.size() == objectCount);
   assert(shapes.size() == objectCount);
-  assert(materials.size() == objectCount);
 
   std::vector<uint32_t> primitiveCount(objectCount, 0);
 
@@ -2069,107 +2030,6 @@ int main() {
                          writeDescriptorSetList.data(), 0, NULL);
 
   // =========================================================================
-  // Material Index Buffer
-
-  std::vector<std::vector<uint32_t>> materialIndexList(objectCount); //TODO loop
-
-  for(int i = 0; i < objectCount; i++){
-    for (tinyobj::shape_t shape : shapes[i]) {
-      for (int index : shape.mesh.material_ids) {
-        materialIndexList[i].push_back(index);
-      }
-    }
-  }
-
-  for(int i = 0; i < objectCount; i++){
-    
-  }
-
-  VkBuffer materialIndexBufferHandle = VK_NULL_HANDLE;
-  createBuffer(materialIndexBufferHandle,
-    sizeof(uint32_t) * materialIndexList[0].size(),
-    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-    queueFamilyIndex);
-
-  VkDeviceMemory materialIndexDeviceMemoryHandle = VK_NULL_HANDLE;
-  allocAndBind(materialIndexDeviceMemoryHandle,
-    &memoryAllocateFlagsInfo,
-    materialIndexBufferHandle,
-    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-  
-  copyData(materialIndexDeviceMemoryHandle,
-    (void *) materialIndexList[0].data(),
-    sizeof(uint32_t) * materialIndexList[0].size());
-
-  // =========================================================================
-  // Material Buffer
-
-  struct Material {
-    float ambient[4] = {0, 0, 0, 0};
-    float diffuse[4] = {0, 0, 0, 0};
-    float specular[4] = {0, 0, 0, 0};
-    float emission[4] = {0, 0, 0, 0};
-  };
-
-  std::vector<Material> materialList(materials[0].size());
-  for (uint32_t x = 0; x < materials[0].size(); x++) { //TODO loop
-    memcpy(materialList[x].ambient, materials[0][x].ambient, sizeof(float) * 3);
-    memcpy(materialList[x].diffuse, materials[0][x].diffuse, sizeof(float) * 3);
-    memcpy(materialList[x].specular, materials[0][x].specular, sizeof(float) * 3);
-    memcpy(materialList[x].emission, materials[0][x].emission, sizeof(float) * 3);
-  }
-
-  VkBuffer materialBufferHandle = VK_NULL_HANDLE;
-  createBuffer(materialBufferHandle,
-    sizeof(Material) * materialList.size(),
-    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-    queueFamilyIndex);
-
-  VkDeviceMemory materialDeviceMemoryHandle = VK_NULL_HANDLE;
-  allocAndBind(materialDeviceMemoryHandle,
-    &memoryAllocateFlagsInfo,
-    materialBufferHandle,
-    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-  
-  copyData(materialDeviceMemoryHandle,
-    (void *)  materialList.data(),
-    sizeof(Material) * materialList.size());
-
-  // =========================================================================
-  // Update Material Descriptor Set
-
-  VkDescriptorBufferInfo materialIndexDescriptorInfo = {
-      .buffer = materialIndexBufferHandle, .offset = 0, .range = VK_WHOLE_SIZE};
-
-  VkDescriptorBufferInfo materialDescriptorInfo = {
-      .buffer = materialBufferHandle, .offset = 0, .range = VK_WHOLE_SIZE};
-
-  std::vector<VkWriteDescriptorSet> materialWriteDescriptorSetList = {
-      {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-       .pNext = NULL,
-       .dstSet = descriptorSetHandleList[1],
-       .dstBinding = 0,
-       .dstArrayElement = 0,
-       .descriptorCount = 1,
-       .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-       .pImageInfo = NULL,
-       .pBufferInfo = &materialIndexDescriptorInfo,
-       .pTexelBufferView = NULL},
-      {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-       .pNext = NULL,
-       .dstSet = descriptorSetHandleList[1],
-       .dstBinding = 1,
-       .dstArrayElement = 0,
-       .descriptorCount = 1,
-       .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-       .pImageInfo = NULL,
-       .pBufferInfo = &materialDescriptorInfo,
-       .pTexelBufferView = NULL}};
-
-  vkUpdateDescriptorSets(deviceHandle, materialWriteDescriptorSetList.size(),
-                         materialWriteDescriptorSetList.data(), 0, NULL);
-
-  // =========================================================================
   // Shader Binding Table
 
   VkDeviceSize shaderBindingTableSize =
@@ -2620,10 +2480,6 @@ int main() {
   vkFreeMemory(deviceHandle, shaderBindingTableDeviceMemoryHandle, NULL);
   vkDestroyBuffer(deviceHandle, shaderBindingTableBufferHandle, NULL);
 
-  vkFreeMemory(deviceHandle, materialDeviceMemoryHandle, NULL);
-  vkDestroyBuffer(deviceHandle, materialBufferHandle, NULL);
-  vkFreeMemory(deviceHandle, materialIndexDeviceMemoryHandle, NULL);
-  vkDestroyBuffer(deviceHandle, materialIndexBufferHandle, NULL);
   vkDestroyFence(deviceHandle,
                  rayTraceImageBarrierAccelerationStructureBuildFenceHandle,
                  NULL);
@@ -2677,8 +2533,6 @@ int main() {
   vkDestroyShaderModule(deviceHandle, rayGenerateShaderModuleHandle, NULL);
   vkDestroyShaderModule(deviceHandle, rayClosestHitShaderModuleHandle, NULL);
   vkDestroyPipelineLayout(deviceHandle, pipelineLayoutHandle, NULL);
-  vkDestroyDescriptorSetLayout(deviceHandle, materialDescriptorSetLayoutHandle,
-                               NULL);
 
   vkDestroyDescriptorSetLayout(deviceHandle, descriptorSetLayoutHandle, NULL);
   vkDestroyDescriptorPool(deviceHandle, descriptorPoolHandle, NULL);

@@ -196,69 +196,38 @@ void createBuffer(VkBuffer& bufferHandle,
 }
 //*****************************************************
 
-void createVertexBuffer(VkBuffer& vertexBufferHandle, 
-  const tinyobj::attrib_t &attrib,
-  uint32_t& queueFamilyIndex, 
-  VkMemoryAllocateFlagsInfo& memoryAllocateFlagsInfo,
-  VkDeviceMemory& vertexDeviceMemoryHandle,
-  VkDeviceAddress& vertexBufferDeviceAddress)
-{
-  vertexBufferHandle = VK_NULL_HANDLE;
-  createBuffer(vertexBufferHandle,
-    sizeof(float) * attrib.vertices.size() * 3,
-      VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-      VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
-      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-    queueFamilyIndex);
-
-  allocAndBind(vertexDeviceMemoryHandle,
-    &memoryAllocateFlagsInfo,
-    vertexBufferHandle,
-    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-
-  copyData(vertexDeviceMemoryHandle,
-    (void *) attrib.vertices.data(),
-    sizeof(float) * attrib.vertices.size() * 3);
-
-  VkBufferDeviceAddressInfo vertexBufferDeviceAddressInfo = {
-      .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-      .pNext = NULL,
-      .buffer = vertexBufferHandle};
-
-  vertexBufferDeviceAddress = pvkGetBufferDeviceAddressKHR(
-      deviceHandle, &vertexBufferDeviceAddressInfo);
-}
-
-void createIndexBuffer(VkBuffer& indexBufferHandle, 
-  std::vector<uint32_t>& indexList,
+void buildBuffer(VkBuffer& bufferHandle, 
+  VkDeviceSize bufferSize,
   uint32_t& queueFamilyIndex,
-  VkMemoryAllocateFlagsInfo& memoryAllocateFlagsInfo,
-  VkDeviceMemory& indexDeviceMemoryHandle,
-  VkDeviceAddress& indexBufferDeviceAddress)
+  void* bufferData,
+  VkBufferUsageFlags usageFlags,
+  VkMemoryPropertyFlagBits memoryPropertyFlags,
+  VkMemoryAllocateFlagsInfo* memoryAllocateFlagsInfo,
+  VkDeviceMemory& deviceMemoryHandle,
+  VkDeviceAddress& bufferDeviceAddress)
 {
-  createBuffer(indexBufferHandle,
-    sizeof(uint32_t) * indexList.size(),
-      VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-      VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
-      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+  bufferHandle = VK_NULL_HANDLE;
+  createBuffer(bufferHandle,
+    bufferSize,
+    usageFlags,
     queueFamilyIndex);
-  
-  allocAndBind(indexDeviceMemoryHandle,
-    &memoryAllocateFlagsInfo,
-    indexBufferHandle,
-    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-  
-  copyData(indexDeviceMemoryHandle,
-    (void *) indexList.data(),
-    sizeof(uint32_t) * indexList.size());
 
-  VkBufferDeviceAddressInfo indexBufferDeviceAddressInfo = {
+  allocAndBind(deviceMemoryHandle,
+    memoryAllocateFlagsInfo,
+    bufferHandle,
+    memoryPropertyFlags);
+
+  copyData(deviceMemoryHandle,
+    (void *) bufferData,
+    bufferSize);
+
+  VkBufferDeviceAddressInfo bufferDeviceAddressInfo = {
       .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
       .pNext = NULL,
-      .buffer = indexBufferHandle};
+      .buffer = bufferHandle};
 
-  indexBufferDeviceAddress =
-      pvkGetBufferDeviceAddressKHR(deviceHandle, &indexBufferDeviceAddressInfo);
+  bufferDeviceAddress = pvkGetBufferDeviceAddressKHR(
+      deviceHandle, &bufferDeviceAddressInfo);
 }
 
 void createBLASGeometry(VkAccelerationStructureGeometryKHR& bottomLevelAccelerationStructureGeometry,
@@ -1637,12 +1606,18 @@ int main() {
   std::vector<VkDeviceAddress> vertexBufferDeviceAddress(objectCount);
   
   for(int i = 0; i < objectCount; i++){
-      createVertexBuffer(vertexBufferHandle[i], 
-        attrib[i], 
-        queueFamilyIndex, 
-        memoryAllocateFlagsInfo,
-        vertexDeviceMemoryHandle[i],
-        vertexBufferDeviceAddress[i]);
+    buildBuffer(vertexBufferHandle[i],
+      sizeof(float) * attrib[i].vertices.size() * 3,
+      queueFamilyIndex,
+      (void *) attrib[i].vertices.data(),
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+      &memoryAllocateFlagsInfo,
+      vertexDeviceMemoryHandle[i],
+      vertexBufferDeviceAddress[i]
+      );
   }
 
 
@@ -1654,13 +1629,18 @@ int main() {
   std::vector<VkDeviceAddress> indexBufferDeviceAddress(objectCount);
 
   for(int i = 0; i < objectCount; i++){
-    createIndexBuffer(indexBufferHandle[i], 
-      indexList[i], 
-      queueFamilyIndex, 
-      memoryAllocateFlagsInfo,
+    buildBuffer(indexBufferHandle[i],
+      sizeof(uint32_t) * indexList[i].size(),
+      queueFamilyIndex,
+      (void *) indexList[i].data(),
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+      &memoryAllocateFlagsInfo,
       indexDeviceMemoryHandle[i],
       indexBufferDeviceAddress[i]
-    );
+      );
   }
 
   // =========================================================================
@@ -2067,6 +2047,10 @@ int main() {
         materialIndexList[i].push_back(index);
       }
     }
+  }
+
+  for(int i = 0; i < objectCount; i++){
+    
   }
 
   VkBuffer materialIndexBufferHandle = VK_NULL_HANDLE;

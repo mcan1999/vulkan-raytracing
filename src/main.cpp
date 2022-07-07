@@ -4,10 +4,13 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 #include <vulkan/vulkan.h>
+#include <glm/glm.hpp> // GL Math library header
+#include <glm/gtc/matrix_transform.hpp>
 
 #include <fstream>
 #include <iostream>
 #include <vector>
+#include <chrono>
 
 #define STRING_RESET "\033[0m"
 #define STRING_INFO "\033[37m"
@@ -194,6 +197,12 @@ void createBuffer(VkBuffer& bufferHandle,
     throwExceptionVulkanAPI(result, "vkCreateBuffer");
   }
 }
+
+void glmToVulkan(glm::mat4 glmMatrix, VkTransformMatrixKHR& vulkanMatrix)
+{
+  glmMatrix =  glm::transpose(glmMatrix);
+  memcpy(&vulkanMatrix, &glmMatrix, sizeof(VkTransformMatrixKHR));
+}
 //*****************************************************
 
 void buildBuffer(VkBuffer& bufferHandle, 
@@ -275,7 +284,7 @@ void createBLAS(VkAccelerationStructureKHR& bottomLevelAccelerationStructureHand
         VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
     .pNext = NULL,
     .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
-    .flags = 0, //TODO check flags VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR
+    .flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR,
     .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
     .srcAccelerationStructure = VK_NULL_HANDLE,
     .dstAccelerationStructure = VK_NULL_HANDLE,
@@ -530,7 +539,7 @@ void createTLAS(VkAccelerationStructureKHR& topLevelAccelerationStructureHandle,
             VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
         .pNext = NULL,
         .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
-        .flags = 0,
+        .flags =  VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR,
         .mode = update ? 
           VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR : 
           VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
@@ -596,17 +605,6 @@ void createTLAS(VkAccelerationStructureKHR& topLevelAccelerationStructureHandle,
   }
   
   //----------------------build----------------------
-  /*
-  VkAccelerationStructureDeviceAddressInfoKHR
-    topLevelAccelerationStructureDeviceAddressInfo = {
-        .sType =
-            VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR,
-        .pNext = NULL,
-        .accelerationStructure = topLevelAccelerationStructureHandle};
-  
-  VkDeviceAddress topLevelAccelerationStructureDeviceAddress =
-      pvkGetAccelerationStructureDeviceAddressKHR(
-          deviceHandle, &topLevelAccelerationStructureDeviceAddressInfo);*/
   
   VkBuffer topLevelAccelerationStructureScratchBufferHandle = VK_NULL_HANDLE;
   createBuffer(topLevelAccelerationStructureScratchBufferHandle,
@@ -1711,12 +1709,13 @@ int main() {
   // Top Level Acceleration Structure
 
    //TODO add matrix vector for each instance
-  VkTransformMatrixKHR transformMatrix ={
-    .matrix = 
-     {{1.0, 0.0, 0.0, 0.0},
-      {0.0, 1.0, 0.0, 0.0},
-      {0.0, 0.0, 1.0, 0.0}}
+  std::vector<glm::mat4> glmMatrices = {
+    glm::mat4(1),
+    glm::translate(glm::mat4(1), glm::vec3(0, 0, 5))
   };
+  assert(glmMatrices.size() == objectCount);
+  
+  VkTransformMatrixKHR transformMatrix;
 
   std::vector<VkAccelerationStructureInstanceKHR> bottomLevelAccelerationStructureInstance(objectCount);
   VkAccelerationStructureKHR topLevelAccelerationStructureHandle;
@@ -1724,6 +1723,8 @@ int main() {
   VkDeviceMemory topLevelAccelerationStructureDeviceMemoryHandle;
 
   for(int i = 0; i < objectCount; i++){
+    glmToVulkan(glmMatrices[i], transformMatrix);
+
     createInstance(bottomLevelAccelerationStructureInstance[i],
       bottomLevelAccelerationStructureDeviceAddress[i],
       transformMatrix,
@@ -2350,6 +2351,8 @@ int main() {
 
   uint32_t currentFrame = 0;
   uint32_t currentImageIndex = 0;
+  float timeParam = 0;
+  auto start = std::chrono::system_clock::now();
 
   while (!glfwWindowShouldClose(windowPtr)) {
     glfwPollEvents();
@@ -2388,6 +2391,38 @@ int main() {
       glfwSetWindowShouldClose(windowPtr, GLFW_TRUE);
     }
 
+  //animate
+  //timeParam += 0.0001;
+  std::chrono::duration<float> diff = std::chrono::system_clock::now() - start;
+  timeParam = diff.count() * 0.1;
+
+  glmMatrices[0] = glmMatrices[0] * glm::rotate(glm::mat4(1),
+    float(timeParam *M_PI * 0.0001), 
+    glm::vec3(0, 1.0f, 0));
+  glmMatrices[1] = glm::translate(
+    glm::rotate(
+        glm::translate(glm::mat4(1), glm::vec3(0, 0, -5)), 
+        float(timeParam *M_PI), 
+        glm::vec3(0, 1.0f, 0)), 
+    glm::vec3(0.0f, 0.0f, 10.0f));  
+
+  assert(glmMatrices.size() == objectCount);
+
+  for(int i = 0; i < objectCount; i++){
+    glmToVulkan(glmMatrices[i], transformMatrix);
+    bottomLevelAccelerationStructureInstance[i].transform = transformMatrix;
+  }
+
+  createTLAS(topLevelAccelerationStructureHandle,
+    bottomLevelAccelerationStructureInstance,
+    queueFamilyIndex,
+    memoryAllocateFlagsInfo,
+    topLevelAccelerationStructureBufferHandle,
+    topLevelAccelerationStructureDeviceMemoryHandle,
+    commandBufferHandleList.back(),
+    queueHandle,
+    true);
+    
     static double previousMousePositionX;
     static double previousMousePositionY;
 
@@ -2503,7 +2538,7 @@ int main() {
 
   // =========================================================================
   // Cleanup
-
+  
   result = vkDeviceWaitIdle(deviceHandle);
 
   if (result != VK_SUCCESS) {

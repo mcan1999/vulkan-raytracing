@@ -5,7 +5,7 @@ SRC_DIR := src
 INC_DIR := include
 SHADER_DIR := shaders
 
-SRC := $(wildcard $(SRC_DIR)/main.cpp)
+SRC := $(wildcard $(SRC_DIR)/*.cpp)
 INC := $(wildcard $(INC_DIR)/*.h)
 SHADER_FILES := $(wildcard $(SRC_DIR)/shader*)
 

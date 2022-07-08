@@ -23,12 +23,15 @@
 #define PRINT_MESSAGE(stream, message) stream << message << std::endl;
 
 #include "config.h"
+#include "camera.h"
 
 static char keyDownIndex[500];
 
-static float cameraPosition[3] = {0, 0, 20};
-static float cameraYaw;
-static float cameraPitch;
+// static float cameraPosition[3] = {0, 0, 20};
+// static float cameraYaw;
+// static float cameraPitch;
+
+Camera camera;
 
 //function pointers
 PFN_vkGetBufferDeviceAddressKHR pvkGetBufferDeviceAddressKHR;
@@ -2768,40 +2771,40 @@ int main() {
 
   uint32_t currentFrame = 0;
   uint32_t currentImageIndex = 0;
-  float timeParam = 0;
+  float timeParam = 0, lastTime = 0;
   auto start = std::chrono::system_clock::now();
 
   while (!glfwWindowShouldClose(windowPtr)) {
     glfwPollEvents();
 
+    std::chrono::duration<float> diff = std::chrono::system_clock::now() - start;
+    timeParam = diff.count() * 0.1;
+    float timeParamDiff = timeParam - lastTime;
+
     bool isCameraMoved = false;
 
     if (keyDownIndex[GLFW_KEY_W]) {
-      cameraPosition[0] += cos(-cameraYaw - (M_PI / 2)) * 0.05f;
-      cameraPosition[2] += sin(-cameraYaw - (M_PI / 2)) * 0.05f;
+      camera.move(FORWARD, CAMERA_SPEED * timeParamDiff);
       isCameraMoved = true;
     }
     if (keyDownIndex[GLFW_KEY_S]) {
-      cameraPosition[0] -= cos(-cameraYaw - (M_PI / 2)) * 0.05f;
-      cameraPosition[2] -= sin(-cameraYaw - (M_PI / 2)) * 0.05f;
+      camera.move(BACKWARD, CAMERA_SPEED * timeParamDiff);
       isCameraMoved = true;
     }
     if (keyDownIndex[GLFW_KEY_A]) {
-      cameraPosition[0] -= cos(-cameraYaw) * 0.05f;
-      cameraPosition[2] -= sin(-cameraYaw) * 0.05f;
+      camera.move(LEFT, CAMERA_SPEED * timeParamDiff);
       isCameraMoved = true;
     }
     if (keyDownIndex[GLFW_KEY_D]) {
-      cameraPosition[0] += cos(-cameraYaw) * 0.05f;
-      cameraPosition[2] += sin(-cameraYaw) * 0.05f;
+      camera.move(RIGHT, CAMERA_SPEED * timeParamDiff);
       isCameraMoved = true;
     }
     if (keyDownIndex[GLFW_KEY_E]) {
-      cameraPosition[1] += 0.05f;
+      camera.move(UP, CAMERA_SPEED * timeParamDiff);
       isCameraMoved = true;
     }
     if (keyDownIndex[GLFW_KEY_Q]) {
-      cameraPosition[1] -= 0.05f;
+      camera.move(DOWN, CAMERA_SPEED * timeParamDiff);
       isCameraMoved = true;
     }
     if (keyDownIndex[GLFW_KEY_ESCAPE]) {
@@ -2810,8 +2813,7 @@ int main() {
 
   //animate
   //timeParam += 0.0001;
-  std::chrono::duration<float> diff = std::chrono::system_clock::now() - start;
-  timeParam = diff.count() * 0.1;
+  lastTime = timeParam;
 
   glmMatrices[0] = glmMatrices[0] * glm::rotate(glm::mat4(1),
     float(timeParam *M_PI * 0.0001), 
@@ -2850,16 +2852,8 @@ int main() {
       double mouseDifferenceX = previousMousePositionX - xPos;
       double mouseDifferenceY = previousMousePositionY - yPos;
 
-      cameraYaw += mouseDifferenceX * 0.0005f;
-      cameraPitch += mouseDifferenceY * 0.0005f;
-      if (cameraPitch > M_PI_2-0.01)
-      {
-          cameraPitch = M_PI_2-0.01;
-      }
-      else if (cameraPitch < -M_PI_2+0.01)
-      {
-          cameraPitch = -M_PI_2+0.01;
-      }
+      camera.processMouseMovement(-mouseDifferenceX * CAMERA_MOUSE_SENSITIVITY, 
+                                  mouseDifferenceY * CAMERA_MOUSE_SENSITIVITY);
 
       previousMousePositionX = xPos;
       previousMousePositionY = yPos;
@@ -2868,33 +2862,25 @@ int main() {
     }
 
     if (isCameraMoved) {
-      uniformStructure.cameraPosition[0] = cameraPosition[0];
-      uniformStructure.cameraPosition[1] = cameraPosition[1];
-      uniformStructure.cameraPosition[2] = cameraPosition[2];
+      glm::vec3 cameraPosition = camera.getPosition();
+      uniformStructure.cameraPosition[0] = cameraPosition.x;
+      uniformStructure.cameraPosition[1] = cameraPosition.y;
+      uniformStructure.cameraPosition[2] = cameraPosition.z;
 
-      uniformStructure.cameraForward[0] =
-          cosf(cameraPitch) * cosf(-cameraYaw - (M_PI / 2.0));
-      uniformStructure.cameraForward[1] = sinf(cameraPitch);
-      uniformStructure.cameraForward[2] =
-          cosf(cameraPitch) * sinf(-cameraYaw - (M_PI / 2.0));
+      glm::vec3 cameraForward = camera.getFrontVector();
+      uniformStructure.cameraForward[0] = cameraForward.x;
+      uniformStructure.cameraForward[1] = cameraForward.y;
+      uniformStructure.cameraForward[2] = cameraForward.z;
 
-      uniformStructure.cameraRight[0] = -uniformStructure.cameraForward[2];
-      uniformStructure.cameraRight[1] = 0;
-      uniformStructure.cameraRight[2] = uniformStructure.cameraForward[0];
+      glm::vec3 cameraRight = camera.getRightVector();
+      uniformStructure.cameraRight[0] = cameraRight.x;
+      uniformStructure.cameraRight[1] = cameraRight.y;
+      uniformStructure.cameraRight[2] = cameraRight.z;
 
-      uniformStructure.cameraUp[0] =
-          uniformStructure.cameraRight[1] * uniformStructure.cameraForward[2] -
-          uniformStructure.cameraRight[2] * uniformStructure.cameraForward[1];
-      uniformStructure.cameraUp[1] =
-          uniformStructure.cameraRight[2] * uniformStructure.cameraForward[0] -
-          uniformStructure.cameraRight[0] * uniformStructure.cameraForward[2];
-      uniformStructure.cameraUp[2] =
-          uniformStructure.cameraRight[0] * uniformStructure.cameraForward[1] -
-          uniformStructure.cameraRight[1] * uniformStructure.cameraForward[0];
-
-      normalize(uniformStructure.cameraForward);
-      normalize(uniformStructure.cameraUp);
-      normalize(uniformStructure.cameraRight);
+      glm::vec3 cameraUp = camera.getUpVector();
+      uniformStructure.cameraUp[0] = cameraUp.x;
+      uniformStructure.cameraUp[1] = cameraUp.y;
+      uniformStructure.cameraUp[2] = cameraUp.z;
     } 
 
     copyData(uniformDeviceMemoryHandle,

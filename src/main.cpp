@@ -789,6 +789,7 @@ int main() {
   // =========================================================================
   // Vulkan Instance
 
+#ifdef VALIDATION_LAYERS_ENABLED
   std::vector<VkValidationFeatureEnableEXT> validationFeatureEnableList = {
       VK_VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT,
       VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT,
@@ -824,6 +825,7 @@ int main() {
       .messageType = debugUtilsMessageTypeFlagBits,
       .pfnUserCallback = &debugCallback,
       .pUserData = NULL};
+#endif
 
   VkApplicationInfo applicationInfo = {
       .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -834,7 +836,11 @@ int main() {
       .engineVersion = VK_MAKE_VERSION(1, 0, 0),
       .apiVersion = VK_API_VERSION_1_3};
 
-  std::vector<const char *> instanceLayerList = {"VK_LAYER_KHRONOS_validation"};
+  std::vector<const char *> instanceLayerList = {
+#ifdef VALIDATION_LAYERS_ENABLED
+    "VK_LAYER_KHRONOS_validation"
+#endif
+  };
 
   uint32_t glfwExtensionCount = 0;
   const char **glfwExtensions =
@@ -848,7 +854,11 @@ int main() {
 
   VkInstanceCreateInfo instanceCreateInfo = {
       .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+#ifdef VALIDATION_LAYERS_ENABLED
       .pNext = &debugUtilsMessengerCreateInfo,
+#else
+      .pNext = NULL,
+#endif
       .flags = 0,
       .pApplicationInfo = &applicationInfo,
       .enabledLayerCount = (uint32_t)instanceLayerList.size(),

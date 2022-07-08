@@ -334,7 +334,7 @@ void createBLAS(VkAccelerationStructureKHR& bottomLevelAccelerationStructureHand
     .geometryCount = 1,
     .pGeometries = &bottomLevelAccelerationStructureGeometry,
     .ppGeometries = NULL,
-    .scratchData = {.deviceAddress = 0}}; //TODO check
+    .scratchData = {.deviceAddress = 0}};
 
 
   bottomLevelAccelerationStructureBuildSizesInfo = {
@@ -524,7 +524,7 @@ void createInstance(VkAccelerationStructureInstanceKHR& bottomLevelAccelerationS
   {.transform = transformMatrix,
     .instanceCustomIndex = objIndex,
     .mask = 0xFF,
-    .instanceShaderBindingTableRecordOffset = 0, //TODO shader binding
+    .instanceShaderBindingTableRecordOffset = 0, 
     .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
     .accelerationStructureReference =
         bottomLevelAccelerationStructureDeviceAddress};
@@ -615,7 +615,7 @@ void createTLAS(VkAccelerationStructureKHR& topLevelAccelerationStructureHandle,
     topLevelAccelerationStructureBufferHandle = VK_NULL_HANDLE;
     createBuffer(topLevelAccelerationStructureBufferHandle,
       topLevelAccelerationStructureBuildSizesInfo.accelerationStructureSize,
-      VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR, //TODO  | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT ??
+      VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR, 
       queueFamilyIndex);
 
     topLevelAccelerationStructureDeviceMemoryHandle = VK_NULL_HANDLE;

@@ -54,7 +54,7 @@ void main() {
   vec3 normal = normalA * barycentric.x + normalB * barycentric.y +
                 normalC * barycentric.z;
 
-  payload.hitPosition = position;
-  payload.hitNormal = normal;
+  payload.hitPosition = gl_ObjectToWorldEXT * vec4(position, 1);
+  payload.hitNormal = (normal * gl_WorldToObjectEXT).xyz;
   payload.objectIndex = gl_InstanceCustomIndexEXT;
 }

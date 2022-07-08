@@ -2463,9 +2463,7 @@ int main() {
           uniformStructure.cameraForward[1] * uniformStructure.cameraUp[0];
 
       uniformStructure.frameCount = 0;
-    } else {
-      uniformStructure.frameCount += 1;
-    }
+    } 
 
     copyData(uniformDeviceMemoryHandle,
       (void *) &uniformStructure,

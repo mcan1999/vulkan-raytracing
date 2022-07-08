@@ -39,14 +39,17 @@ layout(binding = 1, set = 0) uniform UniformStructure {
     0 - diffuse
     1 - mirror
     2 - refractive
-    3 - transparent
     */
   uint centerObjectType;
   uint orbitingObjectType;
+
+  uint orbitingObjectPrimitiveOffset;
+  uint orbitingObjectVertexOffset;
 }
 uniforms;
 
 layout(binding = 4, set = 0, rgba32f) uniform image2D image;
+layout(binding = 5, set = 0) uniform samplerCube skyboxSampler;
 
 const float index_of_refraction = 1.52f;
 const vec3 Iamb = vec3(0.8, 0.8, 0.8); // ambient light intensity
@@ -54,7 +57,6 @@ const vec3 kd = vec3(0.2, 1, 0.2);     // diffuse reflectance coefficient
 const vec3 ka = vec3(0.1, 0.3, 0.1);   // ambient reflectance coefficient
 const vec3 ks = vec3(0.8, 0.8, 0.8);   // specular reflectance coefficient
 
-// TODO: Check the properties of the random function
 float random(vec2 uv, float seed) {
   return fract(sin(dot(uv, vec2(12.9898, 78.233)) + 1113.1 * seed) * 43758.5453);
 }
@@ -91,8 +93,7 @@ void main() {
       int objectIndex = payload.objectIndex;
       if (objectIndex == -1)
       {
-        // TODO: Sample skybox
-        tmpColor = vec3(0.0f, 0.0f, 0.0f);
+        tmpColor = texture(skyboxSampler, vec3(rayDirection.xy, -rayDirection.z)).xyz;
         break;
       }
 
@@ -123,6 +124,8 @@ void main() {
           float NdotL = dot(N, L); // for diffuse component
           float NdotH = dot(N, H); // for specular component
 
+          float attenuation = min(1.0f, 25/(lightDistance*lightDistance));
+
           vec3 diffuseColor = uniforms.lightIntensity * kd * max(0, NdotL);
           vec3 specularColor = uniforms.lightIntensity * ks * pow(max(0, NdotH), 100);
 
@@ -134,19 +137,48 @@ void main() {
       {
         payload.objectIndex = -1;
         vec3 hitNormal = payload.hitNormal;
-        rayOrigin = payload.hitPosition + 0.01 * payload.hitNormal;
+        rayOrigin = payload.hitPosition + 0.01 * hitNormal;
         rayDirection = reflect(rayDirection, hitNormal);
       }
       else if (objectType == 2)
       {
         payload.objectIndex = -1;
         vec3 hitNormal = payload.hitNormal;
-        rayOrigin = payload.hitPosition + 0.01 * payload.hitNormal;
+        float ndoti = dot(rayDirection, hitNormal);
+        bool outwards = ndoti > 0.0f; 
+        if (outwards) 
+        {
+          hitNormal = -hitNormal;
+          ndoti = -ndoti;
+        }
 
-        float ratio = dot(rayDirection, hitNormal) > 0.0f ? index_of_refraction : 1.0f/index_of_refraction;
-        rayDirection = refract(rayDirection, hitNormal, ratio);
+        float ratio = outwards ? index_of_refraction : (1.0f/index_of_refraction);
+
+        // vec3 R = refract(rayDirection, hitNormal, ratio);
+        float k = 1.0 - ratio * ratio * (1.0 - ndoti * ndoti);
+        if (k < 0.0)
+        {
+          rayDirection = reflect(rayDirection, hitNormal);
+          rayOrigin = payload.hitPosition + 0.01 * hitNormal;
+        }
+        else
+        {
+          vec3 R = ratio * rayDirection - (ratio * ndoti + sqrt(k)) * hitNormal;
+          rayDirection = normalize(R);
+          rayOrigin = payload.hitPosition - 0.01 * hitNormal;
+        }
+
+        // if (length(R) > 0.1)
+        // {
+        //   rayDirection = normalize(R);
+        //   rayOrigin = payload.hitPosition - 0.01 * hitNormal;
+        // }
+        // else
+        // {
+        //   rayDirection = reflect(rayDirection, hitNormal);
+        //   rayOrigin = payload.hitPosition + 0.01 * hitNormal;
+        // }
       }
-      // TODO: Transparent objects
     }
     
     color += vec4(tmpColor, 1);

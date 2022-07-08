@@ -55,6 +55,6 @@ void main() {
                 normalC * barycentric.z;
 
   payload.hitPosition = position;
-  payload.hitNormal = normal;
+  payload.hitNormal = normalize(normal);
   payload.objectIndex = gl_InstanceCustomIndexEXT;
 }

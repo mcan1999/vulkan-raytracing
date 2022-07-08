@@ -47,6 +47,7 @@ layout(binding = 1, set = 0) uniform UniformStructure {
 uniforms;
 
 layout(binding = 4, set = 0, rgba32f) uniform image2D image;
+layout(binding = 5, set = 0) uniform samplerCube skyboxSampler;
 
 const float index_of_refraction = 1.52f;
 const vec3 Iamb = vec3(0.8, 0.8, 0.8); // ambient light intensity
@@ -91,8 +92,7 @@ void main() {
       int objectIndex = payload.objectIndex;
       if (objectIndex == -1)
       {
-        // TODO: Sample skybox
-        tmpColor = vec3(0.0f, 0.0f, 0.0f);
+        tmpColor = texture(skyboxSampler, vec3(rayDirection.xy, -rayDirection.z)).xyz;
         break;
       }
 
@@ -141,10 +141,11 @@ void main() {
       {
         payload.objectIndex = -1;
         vec3 hitNormal = payload.hitNormal;
-        rayOrigin = payload.hitPosition + 0.01 * payload.hitNormal;
+        bool outwards = dot(rayDirection, hitNormal) > 0.0f; 
+        rayOrigin = payload.hitPosition + (outwards ? 0.01 : -0.01) * payload.hitNormal;
 
-        float ratio = dot(rayDirection, hitNormal) > 0.0f ? index_of_refraction : 1.0f/index_of_refraction;
-        rayDirection = refract(rayDirection, hitNormal, ratio);
+        float ratio = outwards ? index_of_refraction : 1.0f/index_of_refraction;
+        rayDirection = normalize(refract(rayDirection, hitNormal, ratio));
       }
       // TODO: Transparent objects
     }

@@ -1,6 +1,9 @@
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 #include <vulkan/vulkan.h>
@@ -15,6 +18,8 @@
 #define STRING_ERROR "\033[36m"
 
 #define PRINT_MESSAGE(stream, message) stream << message << std::endl;
+
+#define SKYBOX_TEXTURE_DIR "resources/skybox_texture_test"
 
 static char keyDownIndex[500];
 
@@ -102,7 +107,7 @@ void throwExceptionMessage(std::string message) {
 
 //************** Helpers ****************************
 uint32_t getMemoryIndex(VkMemoryRequirements& memoryRequirements,
-  VkMemoryPropertyFlagBits memoryFlagBits)
+  VkMemoryPropertyFlags memoryFlagBits)
 {
   uint32_t memoryIndex = -1;
   for (uint32_t x = 0; x < physicalDeviceMemoryProperties.memoryTypeCount;
@@ -125,7 +130,7 @@ uint32_t getMemoryIndex(VkMemoryRequirements& memoryRequirements,
 void allocAndBind(VkDeviceMemory& deviceMemoryHandle,
   VkMemoryAllocateFlagsInfo* memoryAllocateFlagsInfoPtr,
   VkBuffer& bufferHandle,
-  VkMemoryPropertyFlagBits memoryFlagBits)
+  VkMemoryPropertyFlags memoryFlagBits)
 {
   VkMemoryRequirements memoryRequirements;
   vkGetBufferMemoryRequirements(deviceHandle, bufferHandle,
@@ -1199,13 +1204,14 @@ int main() {
        .descriptorCount = 1},
       {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = 1},
       {.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .descriptorCount = 4},
-      {.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .descriptorCount = 1}};
+      {.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .descriptorCount = 1},
+      {.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = 1}};
 
   VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
       .pNext = NULL,
       .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
-      .maxSets = 2,
+      .maxSets = 1,
       .poolSizeCount = (uint32_t)descriptorPoolSizeList.size(),
       .pPoolSizes = descriptorPoolSizeList.data()};
 
@@ -1243,6 +1249,11 @@ int main() {
        .pImmutableSamplers = NULL},
       {.binding = 4,
        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+       .descriptorCount = 1,
+       .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR,
+       .pImmutableSamplers = NULL},
+      {.binding = 5,
+       .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
        .descriptorCount = 1,
        .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR,
        .pImmutableSamplers = NULL}};
@@ -1522,7 +1533,7 @@ int main() {
   std::vector<std::vector<tinyobj::shape_t>> shapes;
 
   std::vector<const char*> fileNames = {
-    "resources/cube_scene.obj"
+    "resources/teapot.obj"
   };
 
   uint32_t objectCount = fileNames.size();
@@ -1759,7 +1770,7 @@ int main() {
       2 - refractive
       3 - transparent
      */
-    uint32_t centerObjectType = 1;
+    uint32_t centerObjectType = 0;
     uint32_t orbitingObjectType = 0;
   } uniformStructure;
 
@@ -1950,6 +1961,359 @@ int main() {
   }
 
   // =========================================================================
+  // Create Skybox Texture
+
+  const char *image_files[] = {
+    SKYBOX_TEXTURE_DIR "/right.jpg",
+    SKYBOX_TEXTURE_DIR "/left.jpg",
+    SKYBOX_TEXTURE_DIR "/top.jpg",
+    SKYBOX_TEXTURE_DIR "/bottom.jpg",
+    SKYBOX_TEXTURE_DIR "/front.jpg",
+    SKYBOX_TEXTURE_DIR "/back.jpg",
+  };
+
+  std::vector<unsigned char *> image_data(6);
+  int width, height, nrChannels;
+  for (int i = 0; i < 6; ++i)
+  {
+    unsigned char *data = stbi_load(image_files[i], &width, &height, &nrChannels, STBI_rgb_alpha);
+    image_data[i] = data;
+  } 
+  size_t image_size = width * height * 4;
+
+  // Create Staging Buffer
+
+  VkBuffer stagingBufferHandle = VK_NULL_HANDLE;
+  VkDeviceSize stagingBufferSize = image_size * 6;
+  createBuffer(stagingBufferHandle, stagingBufferSize, 
+      VK_BUFFER_USAGE_TRANSFER_SRC_BIT, queueFamilyIndex);
+
+  VkDeviceMemory stagingDeviceMemoryHandle = VK_NULL_HANDLE;
+
+  allocAndBind(stagingDeviceMemoryHandle, NULL, stagingBufferHandle, 
+      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+  void *hostStagingMemoryBuffer;
+  result = vkMapMemory(deviceHandle, stagingDeviceMemoryHandle, 0,
+                       stagingBufferSize, 0,
+                       &hostStagingMemoryBuffer);
+
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkMapMemory");
+  }
+
+  for (int i = 0; i < 6; ++i)
+  {
+    memcpy(static_cast<char *>(hostStagingMemoryBuffer) + i * image_size, image_data[i], image_size);
+  } 
+
+  vkUnmapMemory(deviceHandle, stagingDeviceMemoryHandle);
+
+  for (int i = 0; i < 6; ++i)
+  {
+    stbi_image_free(image_data[i]);
+  } 
+
+  // Create Skybox Image
+  VkImageCreateInfo skyboxImageInfo{};
+  skyboxImageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+  skyboxImageInfo.imageType = VK_IMAGE_TYPE_2D;
+  skyboxImageInfo.extent.width = width;
+  skyboxImageInfo.extent.height = height;
+  skyboxImageInfo.extent.depth = 1;
+  skyboxImageInfo.mipLevels = 1;
+  skyboxImageInfo.arrayLayers = 6;
+  skyboxImageInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+  skyboxImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+  skyboxImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  skyboxImageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+  skyboxImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+  skyboxImageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  skyboxImageInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+
+  VkImage skyboxImageHandle = VK_NULL_HANDLE;
+  result = vkCreateImage(deviceHandle, &skyboxImageInfo, nullptr, &skyboxImageHandle); 
+  if (result != VK_SUCCESS) 
+  {
+    throwExceptionVulkanAPI(result, "vkCreateImage");
+  }
+
+  VkMemoryRequirements memoryRequirements;
+  vkGetImageMemoryRequirements(deviceHandle, skyboxImageHandle,
+                                &memoryRequirements);
+
+  uint32_t memoryTypeIndex = getMemoryIndex(memoryRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+  
+  VkMemoryAllocateInfo memoryAllocateInfo = {
+      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+      .pNext = NULL,
+      .allocationSize = memoryRequirements.size,
+      .memoryTypeIndex = memoryTypeIndex};
+
+
+  VkDeviceMemory skyboxImageDeviceMemoryHandle = VK_NULL_HANDLE;
+  result = vkAllocateMemory(deviceHandle, &memoryAllocateInfo, NULL,
+                            &skyboxImageDeviceMemoryHandle);
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkAllocateMemory");
+  }
+
+  result = vkBindImageMemory(deviceHandle, skyboxImageHandle,
+                              skyboxImageDeviceMemoryHandle, 0);
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkBindImageMemory");
+  }
+
+  // Copy image data from buffer
+
+  VkCommandBuffer commandBufferHandle = commandBufferHandleList.back();
+
+  VkCommandBufferBeginInfo commandBufferBeginInfo = {
+    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+    .pNext = NULL,
+    .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    .pInheritanceInfo = NULL};
+
+  result = vkBeginCommandBuffer(commandBufferHandle,
+                              &commandBufferBeginInfo);
+
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkBeginCommandBuffer");
+  }
+
+  VkImageMemoryBarrier barrier{};
+  barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.image = skyboxImageHandle;
+  barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  barrier.subresourceRange.baseMipLevel = 0;
+  barrier.subresourceRange.levelCount = 1;
+  barrier.subresourceRange.baseArrayLayer = 0;
+  barrier.subresourceRange.layerCount = 6;
+  barrier.srcAccessMask = 0;
+  barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+  VkPipelineStageFlags sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+  VkPipelineStageFlags destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+
+  vkCmdPipelineBarrier(
+      commandBufferHandle,
+      sourceStage, destinationStage,
+      0,
+      0, nullptr,
+      0, nullptr,
+      1, &barrier
+  );
+
+  result = vkEndCommandBuffer(commandBufferHandle);
+
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkEndCommandBuffer");
+  }
+
+  VkSubmitInfo imageLayoutTransitionSubmitInfo = {
+      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+      .pNext = NULL,
+      .waitSemaphoreCount = 0,
+      .pWaitSemaphores = NULL,
+      .pWaitDstStageMask = NULL,
+      .commandBufferCount = 1,
+      .pCommandBuffers = &commandBufferHandle,
+      .signalSemaphoreCount = 0,
+      .pSignalSemaphores = NULL};
+
+  VkFenceCreateInfo imageLayoutTransitionFenceCreateInfo = {
+    .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, .pNext = NULL, .flags = 0};
+  
+  VkFence imageLayoutTransitionFenceHandle = VK_NULL_HANDLE;
+  result = vkCreateFence(deviceHandle,
+                          &imageLayoutTransitionFenceCreateInfo,
+                          NULL, &imageLayoutTransitionFenceHandle);
+
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkCreateFence");
+  }
+
+  result = vkQueueSubmit(queueHandle, 1,
+                         &imageLayoutTransitionSubmitInfo,
+                         imageLayoutTransitionFenceHandle);
+
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkQueueSubmit");
+  }
+
+  result = vkWaitForFences(deviceHandle, 1,
+                           &imageLayoutTransitionFenceHandle,
+                           true, UINT32_MAX);
+
+  if (result != VK_SUCCESS && result != VK_TIMEOUT) {
+    throwExceptionVulkanAPI(result, "vkWaitForFences");
+  }
+
+  result = vkResetFences(deviceHandle, 1,
+                          &imageLayoutTransitionFenceHandle);
+
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkResetFences");
+  }
+
+  // -------
+
+  result = vkBeginCommandBuffer(commandBufferHandle,
+                              &commandBufferBeginInfo);
+
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkBeginCommandBuffer");
+  }
+
+  VkBufferImageCopy region{};
+        region.bufferOffset = 0;
+        region.bufferRowLength = 0;
+        region.bufferImageHeight = 0;
+        region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.mipLevel = 0;
+        region.imageSubresource.baseArrayLayer = 0;
+        region.imageSubresource.layerCount = 6;
+        region.imageOffset = {0, 0, 0};
+        region.imageExtent = {
+            static_cast<uint32_t>(width),
+            static_cast<uint32_t>(height),
+            1
+        };
+
+  vkCmdCopyBufferToImage(commandBufferHandle, stagingBufferHandle, skyboxImageHandle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+  result = vkEndCommandBuffer(commandBufferHandle);
+
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkEndCommandBuffer");
+  }
+  result = vkQueueSubmit(queueHandle, 1,
+                         &imageLayoutTransitionSubmitInfo,
+                         imageLayoutTransitionFenceHandle);
+
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkQueueSubmit");
+  }
+
+  result = vkWaitForFences(deviceHandle, 1,
+                           &imageLayoutTransitionFenceHandle,
+                           true, UINT32_MAX);
+
+  if (result != VK_SUCCESS && result != VK_TIMEOUT) {
+    throwExceptionVulkanAPI(result, "vkWaitForFences");
+  }
+
+  result = vkResetFences(deviceHandle, 1,
+                          &imageLayoutTransitionFenceHandle);
+
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkResetFences");
+  }
+
+  // ------
+
+  result = vkBeginCommandBuffer(commandBufferHandle,
+                              &commandBufferBeginInfo);
+
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkBeginCommandBuffer");
+  }
+
+  barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+  barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+  barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+  barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+  sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+  destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+
+  vkCmdPipelineBarrier(
+      commandBufferHandle,
+      sourceStage, destinationStage,
+      0,
+      0, nullptr,
+      0, nullptr,
+      1, &barrier
+  );
+
+  result = vkEndCommandBuffer(commandBufferHandle);
+
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkEndCommandBuffer");
+  }
+  result = vkQueueSubmit(queueHandle, 1,
+                         &imageLayoutTransitionSubmitInfo,
+                         imageLayoutTransitionFenceHandle);
+
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkQueueSubmit");
+  }
+
+  result = vkWaitForFences(deviceHandle, 1,
+                           &imageLayoutTransitionFenceHandle,
+                           true, UINT32_MAX);
+
+  if (result != VK_SUCCESS && result != VK_TIMEOUT) {
+    throwExceptionVulkanAPI(result, "vkWaitForFences");
+  }
+
+  result = vkResetFences(deviceHandle, 1,
+                          &imageLayoutTransitionFenceHandle);
+
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkResetFences");
+  }
+
+  vkDestroyFence(deviceHandle, imageLayoutTransitionFenceHandle, NULL);
+  vkDestroyBuffer(deviceHandle, stagingBufferHandle, NULL);
+  vkFreeMemory(deviceHandle, stagingDeviceMemoryHandle, NULL);
+
+  // Create image view for skybox
+
+  VkImageViewCreateInfo skyboxImageViewInfo{};
+  skyboxImageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+  skyboxImageViewInfo.image = skyboxImageHandle;
+  skyboxImageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+  skyboxImageViewInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+  skyboxImageViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  skyboxImageViewInfo.subresourceRange.baseMipLevel = 0;
+  skyboxImageViewInfo.subresourceRange.levelCount = 1;
+  skyboxImageViewInfo.subresourceRange.baseArrayLayer = 0;
+  skyboxImageViewInfo.subresourceRange.layerCount = 6;
+
+  VkImageView skyboxImageViewHandle = VK_NULL_HANDLE;
+  result = vkCreateImageView(deviceHandle, &skyboxImageViewInfo, nullptr, &skyboxImageViewHandle);
+  if (result != VK_SUCCESS) {
+      throwExceptionVulkanAPI(result, "vkCreateImageView");
+  }
+
+  VkSamplerCreateInfo samplerInfo{};
+  samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+  samplerInfo.magFilter = VK_FILTER_LINEAR;
+  samplerInfo.minFilter = VK_FILTER_LINEAR;
+  samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+  samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+  samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+  samplerInfo.anisotropyEnable = VK_FALSE;
+  samplerInfo.maxAnisotropy = 0;
+  samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+  samplerInfo.unnormalizedCoordinates = VK_FALSE;
+  samplerInfo.compareEnable = VK_FALSE;
+  samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+  samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+
+  VkSampler skyboxSamplerHandle = VK_NULL_HANDLE;
+  result = vkCreateSampler(deviceHandle, &samplerInfo, nullptr, &skyboxSamplerHandle);
+  if (result != VK_SUCCESS) {
+    throwExceptionVulkanAPI(result, "vkCreateSampler");
+  }
+
+  // =========================================================================
   // Update Descriptor Set
 
   VkWriteDescriptorSetAccelerationStructureKHR
@@ -1973,6 +2337,11 @@ int main() {
       .sampler = VK_NULL_HANDLE,
       .imageView = rayTraceImageViewHandle,
       .imageLayout = VK_IMAGE_LAYOUT_GENERAL};
+
+  VkDescriptorImageInfo skyboxSamplerDescriptorInfo = {
+      .sampler = skyboxSamplerHandle,
+      .imageView = skyboxImageViewHandle,
+      .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
 
   std::vector<VkWriteDescriptorSet> writeDescriptorSetList = {
       {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -2023,6 +2392,16 @@ int main() {
        .descriptorCount = 1,
        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
        .pImageInfo = &rayTraceImageDescriptorInfo,
+       .pBufferInfo = NULL,
+       .pTexelBufferView = NULL},
+      {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+       .pNext = NULL,
+       .dstSet = descriptorSetHandleList[0],
+       .dstBinding = 5,
+       .dstArrayElement = 0,
+       .descriptorCount = 1,
+       .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+       .pImageInfo = &skyboxSamplerDescriptorInfo,
        .pBufferInfo = NULL,
        .pTexelBufferView = NULL}};
 
@@ -2469,6 +2848,11 @@ int main() {
   if (result != VK_SUCCESS) {
     throwExceptionVulkanAPI(result, "vkDeviceWaitIdle");
   }
+
+  vkDestroySampler(deviceHandle, skyboxSamplerHandle, NULL);
+  vkDestroyImageView(deviceHandle, skyboxImageViewHandle, NULL);
+  vkFreeMemory(deviceHandle, skyboxImageDeviceMemoryHandle, NULL);
+  vkDestroyImage(deviceHandle, skyboxImageHandle, NULL);
 
   for (uint32_t x; x < swapchainImageCount; x++) {
     vkDestroySemaphore(deviceHandle, writeImageSemaphoreHandleList[x], NULL);

@@ -1760,7 +1760,7 @@ int main() {
 
     uint32_t frameCount = 0;
 
-    uint32_t maxBounceCount = 127;
+    uint32_t maxBounceCount = 63;
     uint32_t samplesPerPixel = 4;
 
     /*
@@ -1768,7 +1768,6 @@ int main() {
       0 - diffuse
       1 - mirror
       2 - refractive
-      3 - transparent
      */
     uint32_t centerObjectType = 0;
     uint32_t orbitingObjectType = 0;
@@ -2023,7 +2022,7 @@ int main() {
   skyboxImageInfo.extent.depth = 1;
   skyboxImageInfo.mipLevels = 1;
   skyboxImageInfo.arrayLayers = 6;
-  skyboxImageInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+  skyboxImageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
   skyboxImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
   skyboxImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
   skyboxImageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -2279,7 +2278,7 @@ int main() {
   skyboxImageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
   skyboxImageViewInfo.image = skyboxImageHandle;
   skyboxImageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
-  skyboxImageViewInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+  skyboxImageViewInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
   skyboxImageViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
   skyboxImageViewInfo.subresourceRange.baseMipLevel = 0;
   skyboxImageViewInfo.subresourceRange.levelCount = 1;

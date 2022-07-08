@@ -24,8 +24,6 @@ layout(binding = 1, set = 0) uniform UniformStructure {
   vec3 lightPosition;
   float lightIntensity;
 
-  uint frameCount;
-
   uint maxBounceCount;
   uint samplesPerPixel;
 

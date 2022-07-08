@@ -29,8 +29,6 @@ layout(binding = 1, set = 0) uniform UniformStructure {
   vec3 lightPosition;
   float lightIntensity;
 
-  uint frameCount;
-
   uint maxBounceCount;
   uint samplesPerPixel;
 
@@ -63,14 +61,13 @@ float random(vec2 uv, float seed) {
 
 void main() {
   uint samples = uniforms.samplesPerPixel;
-  uint frameCount = uniforms.frameCount;
 
   vec4 color = vec4(0.0f, 0.0f, 0.0f, 0.0f);
 
   const uint normalRayFlags = gl_RayFlagsOpaqueEXT;
   const uint shadowRayFlags = gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT;
 
-  uint seedOffset = samples * frameCount;
+  uint seedOffset = samples;
   for (int i = 0; i < samples; i++) 
   {
     vec2 uv = gl_LaunchIDEXT.xy +
@@ -80,7 +77,7 @@ void main() {
 
     payload.objectIndex = -1;
     vec3 rayOrigin = uniforms.position.xyz;
-    vec3 rayDirection = normalize(uv.x * uniforms.right + uv.y * uniforms.up + uniforms.forward).xyz;
+    vec3 rayDirection = normalize((uv.x * uniforms.right + uv.y * uniforms.up + 2.5 * uniforms.forward).xyz);
 
     vec3 tmpColor = Iamb * ka;
 
@@ -185,14 +182,6 @@ void main() {
   }
 
   color /= samples;
-
-  if (frameCount > 0) {
-    vec4 previousColor = imageLoad(image, ivec2(gl_LaunchIDEXT.xy));
-    previousColor *= frameCount;
-
-    color += previousColor;
-    color /= (frameCount + 1);
-  }
 
   imageStore(image, ivec2(gl_LaunchIDEXT.xy), color);
 }

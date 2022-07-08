@@ -22,7 +22,7 @@
 
 #define PRINT_MESSAGE(stream, message) stream << message << std::endl;
 
-#define SKYBOX_TEXTURE_DIR "resources/skybox_texture_test"
+#include "config.h"
 
 static char keyDownIndex[500];
 
@@ -57,6 +57,24 @@ void parseFile( tinyobj::ObjReaderConfig& reader_config, tinyobj::ObjReader& rea
   if (!reader.Warning().empty()) {
     std::cout << "TinyObjReader: " << reader.Warning();
   }
+}
+
+void printFps()
+{
+    static double lastFpsMeasureTime = 0;
+    static int nbFrames = 0;
+
+    double currentTime = glfwGetTime();
+    double delta = currentTime - lastFpsMeasureTime;
+    nbFrames++;
+    if (delta >= 1.0)
+    {
+      double fps = ((double)(nbFrames)) / delta;
+      std::cout << "FPS: " << fps << std::endl;
+
+      nbFrames = 0;
+      lastFpsMeasureTime = currentTime;
+    }
 }
 
 void keyCallback(GLFWwindow *windowPtr, int key, int scancode, int action,
@@ -209,6 +227,15 @@ void glmToVulkan(glm::mat4 glmMatrix, VkTransformMatrixKHR& vulkanMatrix)
   glmMatrix =  glm::transpose(glmMatrix);
   memcpy(&vulkanMatrix, &glmMatrix, sizeof(VkTransformMatrixKHR));
 }
+
+void normalize(float *v)
+{
+  float len = sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+  v[0] = v[0] / len;
+  v[1] = v[1] / len;
+  v[2] = v[2] / len;
+}
+
 //*****************************************************
 
 void buildBuffer(VkBuffer& bufferHandle, 
@@ -1153,7 +1180,11 @@ int main() {
       .pQueueFamilyIndices = &queueFamilyIndex,
       .preTransform = surfaceCapabilities.currentTransform,
       .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+#ifndef TEST_FPS
       .presentMode = presentModeList[0],
+#else
+      .presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR,
+#endif
       .clipped = VK_TRUE,
       .oldSwapchain = VK_NULL_HANDLE};
 
@@ -1548,8 +1579,8 @@ int main() {
   std::vector<std::vector<tinyobj::shape_t>> shapes;
  
   std::vector<const char*> fileNames = {
-    "resources/teapot.obj",
-    "resources/armadillo.obj",
+    CENTER_MESH_OBJ_PATH,
+    ORBITING_MESH_OBJ_PATH,
   };
 
   uint32_t objectCount = fileNames.size();
@@ -1791,8 +1822,6 @@ int main() {
     float lightPosition[3] = {5, 5, 5};
     float lightIntensity = 1.0f;
 
-    uint32_t frameCount = 0;
-
     uint32_t maxBounceCount = 63;
     uint32_t samplesPerPixel = 4;
 
@@ -1802,8 +1831,8 @@ int main() {
       1 - mirror
       2 - refractive
      */
-    uint32_t centerObjectType = 1;
-    uint32_t orbitingObjectType = 0;
+    uint32_t centerObjectType = CENTER_MESH_TYPE;
+    uint32_t orbitingObjectType = ORBITING_MESH_TYPE;
 
     uint32_t orbitingObjectPrimitiveOffset;
     uint32_t orbitingObjectVertexOffset;
@@ -2738,31 +2767,31 @@ int main() {
     bool isCameraMoved = false;
 
     if (keyDownIndex[GLFW_KEY_W]) {
-      cameraPosition[0] += cos(-cameraYaw - (M_PI / 2)) * 0.01f;
-      cameraPosition[2] += sin(-cameraYaw - (M_PI / 2)) * 0.01f;
+      cameraPosition[0] += cos(-cameraYaw - (M_PI / 2)) * 0.05f;
+      cameraPosition[2] += sin(-cameraYaw - (M_PI / 2)) * 0.05f;
       isCameraMoved = true;
     }
     if (keyDownIndex[GLFW_KEY_S]) {
-      cameraPosition[0] -= cos(-cameraYaw - (M_PI / 2)) * 0.01f;
-      cameraPosition[2] -= sin(-cameraYaw - (M_PI / 2)) * 0.01f;
+      cameraPosition[0] -= cos(-cameraYaw - (M_PI / 2)) * 0.05f;
+      cameraPosition[2] -= sin(-cameraYaw - (M_PI / 2)) * 0.05f;
       isCameraMoved = true;
     }
     if (keyDownIndex[GLFW_KEY_A]) {
-      cameraPosition[0] -= cos(-cameraYaw) * 0.01f;
-      cameraPosition[2] -= sin(-cameraYaw) * 0.01f;
+      cameraPosition[0] -= cos(-cameraYaw) * 0.05f;
+      cameraPosition[2] -= sin(-cameraYaw) * 0.05f;
       isCameraMoved = true;
     }
     if (keyDownIndex[GLFW_KEY_D]) {
-      cameraPosition[0] += cos(-cameraYaw) * 0.01f;
-      cameraPosition[2] += sin(-cameraYaw) * 0.01f;
+      cameraPosition[0] += cos(-cameraYaw) * 0.05f;
+      cameraPosition[2] += sin(-cameraYaw) * 0.05f;
       isCameraMoved = true;
     }
-    if (keyDownIndex[GLFW_KEY_SPACE]) {
-      cameraPosition[1] += 0.01f;
+    if (keyDownIndex[GLFW_KEY_E]) {
+      cameraPosition[1] += 0.05f;
       isCameraMoved = true;
     }
-    if (keyDownIndex[GLFW_KEY_LEFT_CONTROL]) {
-      cameraPosition[1] -= 0.01f;
+    if (keyDownIndex[GLFW_KEY_Q]) {
+      cameraPosition[1] -= 0.05f;
       isCameraMoved = true;
     }
     if (keyDownIndex[GLFW_KEY_ESCAPE]) {
@@ -2812,6 +2841,15 @@ int main() {
       double mouseDifferenceY = previousMousePositionY - yPos;
 
       cameraYaw += mouseDifferenceX * 0.0005f;
+      cameraPitch += mouseDifferenceY * 0.0005f;
+      if (cameraPitch > M_PI_2-0.01)
+      {
+          cameraPitch = M_PI_2-0.01;
+      }
+      else if (cameraPitch < -M_PI_2+0.01)
+      {
+          cameraPitch = -M_PI_2+0.01;
+      }
 
       previousMousePositionX = xPos;
       previousMousePositionY = yPos;
@@ -2830,17 +2868,23 @@ int main() {
       uniformStructure.cameraForward[2] =
           cosf(cameraPitch) * sinf(-cameraYaw - (M_PI / 2.0));
 
-      uniformStructure.cameraRight[0] =
-          uniformStructure.cameraForward[1] * uniformStructure.cameraUp[2] -
-          uniformStructure.cameraForward[2] * uniformStructure.cameraUp[1];
-      uniformStructure.cameraRight[1] =
-          uniformStructure.cameraForward[2] * uniformStructure.cameraUp[0] -
-          uniformStructure.cameraForward[0] * uniformStructure.cameraUp[2];
-      uniformStructure.cameraRight[2] =
-          uniformStructure.cameraForward[0] * uniformStructure.cameraUp[1] -
-          uniformStructure.cameraForward[1] * uniformStructure.cameraUp[0];
+      uniformStructure.cameraRight[0] = -uniformStructure.cameraForward[2];
+      uniformStructure.cameraRight[1] = 0;
+      uniformStructure.cameraRight[2] = uniformStructure.cameraForward[0];
 
-      uniformStructure.frameCount = 0;
+      uniformStructure.cameraUp[0] =
+          uniformStructure.cameraRight[1] * uniformStructure.cameraForward[2] -
+          uniformStructure.cameraRight[2] * uniformStructure.cameraForward[1];
+      uniformStructure.cameraUp[1] =
+          uniformStructure.cameraRight[2] * uniformStructure.cameraForward[0] -
+          uniformStructure.cameraRight[0] * uniformStructure.cameraForward[2];
+      uniformStructure.cameraUp[2] =
+          uniformStructure.cameraRight[0] * uniformStructure.cameraForward[1] -
+          uniformStructure.cameraRight[1] * uniformStructure.cameraForward[0];
+
+      normalize(uniformStructure.cameraForward);
+      normalize(uniformStructure.cameraUp);
+      normalize(uniformStructure.cameraRight);
     } 
 
     copyData(uniformDeviceMemoryHandle,
@@ -2910,6 +2954,10 @@ int main() {
     }
 
     currentFrame = (currentFrame + 1) % swapchainImageCount;
+
+#ifdef TEST_FPS
+    printFps();
+#endif
   }
 
   // =========================================================================

@@ -33,3 +33,4 @@ You can compile and run the project by using the following commands:
 make
 ./main
 ```
+You can also modify the `config.h` file in the include directory to change models, skybox texture and some other parameters mentioned in the blog post.

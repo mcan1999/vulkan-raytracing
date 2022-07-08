@@ -26,7 +26,7 @@
 
 static char keyDownIndex[500];
 
-static float cameraPosition[3];
+static float cameraPosition[3] = {0, 0, 20};
 static float cameraYaw;
 static float cameraPitch;
 

@@ -34,3 +34,10 @@ make
 ./main
 ```
 You can also modify the `config.h` file in the include directory to change models, skybox texture and some other parameters mentioned in the blog post.
+
+## User Controls
+
+While running the application, the camera can be moved with the WASD keys. 
+In addition, you can move up and down by pressing the keys E and Q respectively.
+If you hold the right mouse button and move the cursor, the camera orientation 
+will change as well.

@@ -27,9 +27,9 @@
 
 static char keyDownIndex[500];
 
-// static float cameraPosition[3] = {0, 0, 20};
-// static float cameraYaw;
-// static float cameraPitch;
+static double previousMousePositionX;
+static double previousMousePositionY;
+static bool cameraMoving = false;
 
 Camera camera;
 
@@ -90,6 +90,23 @@ void keyCallback(GLFWwindow *windowPtr, int key, int scancode, int action,
   if (action == GLFW_RELEASE) {
     keyDownIndex[key] = 0;
   }
+}
+
+void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods)
+{
+    if (button == GLFW_MOUSE_BUTTON_RIGHT)
+      if (action == GLFW_PRESS)
+      {
+          double x, y;
+          glfwGetCursorPos(window, &x, &y);
+          previousMousePositionX = x;
+          previousMousePositionY = y;
+          cameraMoving = true;
+      }
+      else
+      {
+          cameraMoving = false;
+      }
 }
 
 VkBool32
@@ -786,8 +803,9 @@ int main() {
   glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
   glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
   GLFWwindow *windowPtr = glfwCreateWindow(800, 600, "Vulkan", NULL, NULL);
-  glfwSetInputMode(windowPtr, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+  glfwSetInputMode(windowPtr, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
   glfwSetKeyCallback(windowPtr, keyCallback);
+  glfwSetMouseButtonCallback(windowPtr, mouseButtonCallback);
 
   // =========================================================================
   // Vulkan Instance
@@ -1827,10 +1845,10 @@ int main() {
   // Uniform Buffer
 
   struct UniformStructure {
-    float cameraPosition[4] = {0, 0, 0, 1};
+    float cameraPosition[4] = {0, 0, 20, 1};
     float cameraRight[4] = {1, 0, 0, 1};
     float cameraUp[4] = {0, 1, 0, 1};
-    float cameraForward[4] = {0, 0, 1, 1};
+    float cameraForward[4] = {0, 0, -1, 1};
 
     float lightPosition[3] = {5, 5, 5};
     float lightIntensity = 1.0f;
@@ -2841,14 +2859,11 @@ int main() {
     commandBufferHandleList.back(),
     queueHandle,
     true);
-    
-    static double previousMousePositionX;
-    static double previousMousePositionY;
 
     double xPos, yPos;
     glfwGetCursorPos(windowPtr, &xPos, &yPos);
 
-    if (previousMousePositionX != xPos || previousMousePositionY != yPos) {
+    if (cameraMoving && (previousMousePositionX != xPos || previousMousePositionY != yPos)) {
       double mouseDifferenceX = previousMousePositionX - xPos;
       double mouseDifferenceY = previousMousePositionY - yPos;
 

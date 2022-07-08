@@ -7,7 +7,6 @@ layout(location = 0) rayPayloadEXT Payload {
   vec3 hitPosition;
   vec3 hitNormal;
   
-  // TODO: Set object index in BLAS
   /*
     Object index:
     0 - center mesh

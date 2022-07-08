@@ -1822,8 +1822,8 @@ int main() {
     float lightPosition[3] = {5, 5, 5};
     float lightIntensity = 1.0f;
 
-    uint32_t maxBounceCount = 63;
-    uint32_t samplesPerPixel = 4;
+    uint32_t maxBounceCount = MAX_BOUNCE_COUNT;
+    uint32_t samplesPerPixel = SAMPLES_PER_PIXEL;
 
     /*
       Object types:

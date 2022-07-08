@@ -18,4 +18,7 @@
 // Define TEST_FPS to disable frame-rate locking and print FPS
 // #define TEST_FPS
 
+#define MAX_BOUNCE_COUNT 63
+#define SAMPLES_PER_PIXEL 4
+
 #endif
